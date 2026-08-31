@@ -22,15 +22,12 @@
 
 ## 部署构成
 
-新增 `k8s/base/` 作为可复用清单根：
+新增 `k8s/base/` 作为只包含 Deployment 的可复用清单根：
 
-- `ConfigMap`：只含 `SPRING_PROFILES_ACTIVE`、`SERVER_PORT`、`CONTEXT_PATH`、JVM 参数等非敏感配置。
-- `Deployment`：单副本 `orchestapi`，以 ConfigMap 和外部 Secret 注入数据库参数；包含资源请求/限制、滚动更新策略、readiness/liveness/startup probes 与非 root 容器安全上下文。
-- `Service`：仅暴露 Pod 的 8080 端口给 Ingress。
-- `Ingress`：把 `/orchestapi` 前缀无 rewrite 转发到该 Service，并保留企业 Ingress controller 需要的 class、TLS、白名单注解扩展点。
-- `NetworkPolicy`：默认拒绝 Pod 入站，并在 overlay 中只放行已由平台确认的 Ingress controller namespace/labels。
+- `Deployment`：单副本 `orchestapi`，内嵌 `SPRING_PROFILES_ACTIVE`、`SERVER_PORT`、`CONTEXT_PATH` 和 JVM 参数，并通过外部 Secret 注入数据库参数；包含资源请求/限制、滚动更新策略、readiness/liveness/startup probes 与非 root 容器安全上下文。
+- Service、Ingress/Gateway、NetworkPolicy、Namespace 和镜像拉取权限由 Starbucks 平台提供，不由本仓库创建。
 
-`k8s/overlays/internal-example/` 提供内部环境 patch：镜像名和 tag、namespace、host、TLS secret、Ingress class、允许 CIDR、数据库 Secret 名称都必须由 Starbucks 平台值替换。真实 host、CIDR、namespace 和 Secret 不写入仓库。
+`k8s/overlays/internal-example/` 只负责替换 Deployment 的镜像名、tag 和 namespace。真实 namespace、Secret、入口域名、TLS、allowlist 和网络策略不写入仓库。
 
 ## 运行配置与敏感边界
 
@@ -38,11 +35,11 @@
 
 | 类别 | 参数 |
 | --- | --- |
-| ConfigMap | `SPRING_PROFILES_ACTIVE=prod`、`SERVER_PORT=8080`、`CONTEXT_PATH=/orchestapi`、`JAVA_OPTS` |
+| Deployment env | `SPRING_PROFILES_ACTIVE=prod`、`SERVER_PORT=8080`、`CONTEXT_PATH=/orchestapi`、`JAVA_OPTS` |
 | Secret | `DB_URL`、`DB_USERNAME`、`DB_PASSWORD` |
-| 平台参数 | Ingress host、TLS secret、allowlist CIDR、Ingress class、镜像仓库/标签 |
+| 平台参数 | Namespace、Service、Ingress/Gateway、TLS、allowlist、NetworkPolicy、镜像仓库/标签 |
 
-生产 profile 将 actuator health 详情设为 `never`；health 仍用于 kubelet probe，但不向普通受限内网用户暴露数据库细节。没有 Secret 清单实体、真实值或从参考项目复制的明文 ConfigMap。
+生产 profile 将 actuator health 详情设为 `never`；health 仍用于 kubelet probe，但不向普通受限内网用户暴露数据库细节。没有 Secret 清单实体、真实值或独立 ConfigMap；非敏感变量直接位于 Deployment。
 
 ## 可用性边界
 
@@ -55,8 +52,8 @@
 实现会提供：
 
 1. 为路径前缀和生产安全收紧的最小配置变更；
-2. Kubernetes base 与示例 internal overlay；
+2. 只含 Deployment 的 Kubernetes base 与示例 internal overlay；
 3. `deploy.sh`、本地 Maven JAR 构建、Starbucks runtime-only 镜像封装、`.env`/Secret 键说明、发布、回滚和集群验证文档；
 4. focused backend tests、frontend production build、JAR 静态资源检查与 `kubectl kustomize` 渲染检查。
 
-真实集群部署还需要平台提供 host、namespace、Ingress 类型/CIDR、TLS Secret、PostgreSQL endpoint 和创建的数据库 Secret。代码库验证不能替代该环境的 rollout、Ingress allowlist 和实际数据库连通性证明。
+真实集群部署还需要平台提供 Namespace、Service、Ingress/Gateway、host、Ingress 类型/CIDR、TLS Secret、NetworkPolicy、镜像拉取权限、PostgreSQL endpoint 和创建的数据库 Secret。代码库验证不能替代该环境的 rollout、Ingress allowlist 和实际数据库连通性证明。

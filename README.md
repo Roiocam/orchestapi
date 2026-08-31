@@ -933,14 +933,15 @@ If only the JAR is needed, without Docker:
 
 The internal release path uses the Starbucks registry and keeps the first
 release restricted to the internal network. Authentication is unchanged;
-access is constrained by the environment-owned Ingress allowlist and
-NetworkPolicy overlay.
+this repository applies one `Deployment` and references an external database
+Secret. The Starbucks platform owns the Service, Ingress/Gateway, and
+NetworkPolicy that expose the Pod.
 
 ```bash
 IMAGE_REPOSITORY=registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi \
   ./deploy.sh "$IMAGE_TAG" --skip-install --push
 
-# Then render and apply an environment-owned overlay:
+# Then render and apply an environment-owned Deployment-only overlay:
 kubectl kustomize k8s/overlays/<approved-overlay> > /tmp/orchestapi.yaml
 kubectl apply -k k8s/overlays/<approved-overlay>
 ```
@@ -1031,7 +1032,7 @@ For local development, both default to `/` — no configuration needed.
 
 ### Starbucks 内部 Kubernetes
 
-面向 Starbucks 内网的首版使用一个镜像和一个 Service，在 `/orchestapi` 下同时提供 UI、API、SSE、Mock 与 Webhook。部署步骤、Secret 外置方式、受限 Ingress 与回滚流程见 [Kubernetes 内部部署说明](k8s/README.md)。`k8s/overlays/internal-example` 仅为带安全占位值的示例，不能直接作为生产配置 apply。
+面向 Starbucks 内网的首版只由本仓库部署一个 Deployment，数据库凭据从外部 Secret 引用；Service、Ingress/Gateway 和 NetworkPolicy 由平台提供，在 `/orchestapi` 下暴露 UI、API、SSE、Mock 与 Webhook。部署步骤、Secret 外置方式和回滚流程见 [Kubernetes 内部部署说明](k8s/README.md)。`k8s/overlays/internal-example` 仅为带占位值的示例，不能直接作为生产配置 apply。
 
 ---
 

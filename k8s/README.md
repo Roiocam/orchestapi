@@ -1,58 +1,75 @@
 # Starbucks 内部 Kubernetes 部署
 
-本目录提供单镜像、单 Service 的内部部署模板。应用、REST/SSE、Mock 与 Webhook 都通过同一个无重写前缀 `/orchestapi` 暴露；首版仅依赖网络边界限制访问，不变更应用认证。
+本目录现在只渲染一个 `apps/v1 Deployment`：应用以单副本运行，配置中的非敏感变量直接写在 Deployment，数据库凭据只通过外部预创建的 `orchestapi-db` Secret 引用。
 
-`overlays/internal-example` **不可直接部署**。其中的 `orchestapi-internal`、`replace-me` tag、`.invalid` 主机名和 `192.0.2.0/32` 都是安全占位符；镜像仓库默认指向已在 Starbucks 项目中使用的 `registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi`，也必须由环境负责人确认或覆盖。开始部署前，平台负责人必须将该目录复制到环境自有的 overlay，并用已批准的命名空间、镜像仓库与 tag、IngressClass/注解、TLS Secret、访问 CIDR、以及 Ingress controller 命名空间选择器替换这些值。
+`k8s/overlays/internal-example` 不能直接部署。它只用于把镜像、Namespace 和资源名称参数化；其中的 `orchestapi-internal`、`replace-me` tag 以及内部仓库示例都必须替换为平台批准的值。
 
-不要直接对 `k8s/base` 或 `overlays/internal-example` 执行 `kubectl apply`。基础层默认拒绝所有入站流量；示例层只适用于渲染和作为环境配置起点。
+## 清单边界
 
-## 运行约束
-
-- 保持一个镜像和一个名为 `orchestapi` 的 ClusterIP Service；前端资源已嵌入 Spring Boot JAR。
-- 后端和前端必须使用同一前缀：`CONTEXT_PATH=/orchestapi` 与构建参数 `VITE_BASE_PATH=/orchestapi/`。
-- Ingress 将 `/orchestapi` 原样转发，不使用 rewrite；因此 `/orchestapi/api/**`、`/orchestapi/mock/**` 与 `/orchestapi/webhook/**` 保留正确路径。
-- Deployment 固定为一个常驻副本。SSE、Webhook 监听器、运行注册表和调度在当前版本中均为进程本地状态，不能通过横向扩容获得 HA。
-
-## 构建并发布镜像
-
-采用与 `agent-session` 相同的职责边界：前端和后端在构建机本地完成，Docker 不再运行 Node 或 Maven，只把已验证的 Spring Boot JAR 封装进运行时镜像。默认运行时 `FROM` 使用从 `agent-session`/Starbucks 项目构建配置中核对的 Java 基础镜像；平台若分配了其他批准镜像，通过 `RUNTIME_IMAGE` 覆盖。
-
-先确认构建机具备 Java 21、Node/npm、Maven（或 `backend/mvnw`）和 Docker，并登录内部镜像仓库。由于当前核对的 Starbucks Java 基础镜像为 `linux/amd64`，`deploy.sh` 默认以 `linux/amd64` 作为 Docker 目标平台；平台若提供其他架构镜像，可用 `--platform` 或 `IMAGE_PLATFORM` 覆盖。最小本地构建命令：
+执行：
 
 ```bash
-./deploy.sh "$IMAGE_TAG" --skip-install
+kubectl kustomize k8s/overlays/internal-example
 ```
 
-脚本会依次执行：
+预期只输出一个 `Deployment/orchestapi`，不会输出 ConfigMap、Service、Ingress、NetworkPolicy 或 Secret。
 
-1. `VITE_BASE_PATH=/orchestapi/ npm run build`；
-2. `mvn clean package -Dfrontend.dist.dir=.../frontend/dist`，生成 `backend/target/orchestapi-1.0.0.jar`，并校验 JAR 内含 `static/index.html`；
-3. `docker build`，仅将该 JAR 封装为运行时镜像。
+Deployment 内嵌的非敏感环境变量为：
 
-默认只构建本地镜像，不会 push 或修改集群。需要发布到 Starbucks 内部仓库时显式执行：
+```text
+SPRING_PROFILES_ACTIVE=prod
+SERVER_PORT=8080
+CONTEXT_PATH=/orchestapi
+JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+```
+
+数据库环境变量仍从外部 Secret `orchestapi-db` 读取：`DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。仓库不会创建或保存 Secret。
+
+## Starbucks 平台需要另外提供
+
+因为本仓库不再创建 Service、Ingress 和 NetworkPolicy，平台侧需要提供：
+
+- 一个选择标签 `app.kubernetes.io/name: orchestapi`、目标端口 `8080` 的 Service；
+- 内部 Ingress/Gateway，将 `/orchestapi` 原样转发到该 Service，不做 rewrite，并配置 TLS、内网 DNS、allowlist 和 SSE 长连接超时；
+- 对应的 NetworkPolicy/网络边界，仅允许批准的内网来源访问；
+- 目标 Namespace（Kustomize 不会创建 Namespace）；
+- 私有镜像仓库的节点拉取权限或 `imagePullSecret`；
+- 可从该 Namespace 访问的外部 PostgreSQL。
+
+Service/Ingress 必须保持以下路径契约：
+
+```text
+/orchestapi/
+/orchestapi/api/**
+/orchestapi/mock/**
+/orchestapi/webhook/**
+```
+
+首版保持 `replicas: 1`。SSE、Webhook 监听器、运行注册表和调度状态目前都在进程内，不能直接横向扩容。
+
+## 发布前准备
+
+先复制示例 Kustomize overlay 到平台管理的私有部署仓库或受控目录，并替换：
+
+```yaml
+namespace: <approved-namespace>
+images:
+  - name: orchestapi
+    newName: <approved-registry>/orchestapi
+    newTag: <immutable-tag>
+```
+
+确认镜像已推送并可被集群拉取。例如：
 
 ```bash
-IMAGE_REPOSITORY=registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi \
-  ./deploy.sh "$IMAGE_TAG" --skip-install --push
+IMAGE=registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi:3c7941c
+docker login registry-stg.vestack.sbuxcf.net
+docker push "$IMAGE"
 ```
 
-只需要 JAR（例如交给其他制品流程）时：
+如果平台使用其他仓库，必须同时替换 overlay 中的 `newName`。
 
-```bash
-./deploy.sh "$IMAGE_TAG" --skip-install --jar-only
-```
-
-查看命令计划而不执行任何构建或发布动作：
-
-```bash
-./deploy.sh "$IMAGE_TAG" --dry-run
-```
-
-`--apply-k8s` 只在镜像已经推送并且当前 kubeconfig/namespace 已获批准时使用；它执行 `kubectl set image`，不会创建数据库 Secret。推送镜像和生成环境 overlay 仍由拥有相应内部平台权限的发布流程负责。
-
-## 在集群外管理数据库凭据
-
-先在本机或受控 CI 工作目录准备一个不纳入 Git 的 `SECRET_ENV_FILE`。该文件仅含三项键：`DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。不要使用 `--from-literal`，避免凭据进入 shell 历史或任务日志。
+创建外部数据库 Secret（文件不要提交 Git）：
 
 ```bash
 kubectl -n "$DEPLOY_NAMESPACE" create secret generic orchestapi-db \
@@ -60,35 +77,41 @@ kubectl -n "$DEPLOY_NAMESPACE" create secret generic orchestapi-db \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Kubernetes 清单只引用名为 `orchestapi-db` 的现有 Secret；不会创建或提交 Secret 资源。数据库网络可达性、证书要求与最小权限由环境团队确认。
+`SECRET_ENV_FILE` 仅包含 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。首次启动会执行 Flyway migration，数据库账号需要具备相应 schema/table DDL 权限。
 
 ## 渲染、发布与回滚
 
-令 `OVERLAY_DIR` 指向已经替换所有占位值的环境自有 overlay，`DEPLOY_NAMESPACE` 与其中命名空间一致。
-
 ```bash
+kubectl config current-context
+kubectl get namespace "$DEPLOY_NAMESPACE"
+
 kubectl kustomize "$OVERLAY_DIR" > /tmp/orchestapi-rendered.yaml
+kubectl diff -k "$OVERLAY_DIR"
 kubectl apply -k "$OVERLAY_DIR"
 kubectl -n "$DEPLOY_NAMESPACE" rollout status deployment/orchestapi --timeout=5m
 ```
 
-发生发布回归时，回退 Deployment 的上一修订：
+检查 Pod 状态和日志：
+
+```bash
+kubectl -n "$DEPLOY_NAMESPACE" get pods -l app.kubernetes.io/name=orchestapi
+kubectl -n "$DEPLOY_NAMESPACE" logs deployment/orchestapi
+```
+
+回滚 Deployment：
 
 ```bash
 kubectl -n "$DEPLOY_NAMESPACE" rollout undo deployment/orchestapi
 ```
 
-发布前应保留渲染结果供审查，确认其中仍为一个副本、`CONTEXT_PATH` 为 `/orchestapi`、Ingress 没有 rewrite 注解，并且只含对 `orchestapi-db` 的 Secret 引用。
+镜像回滚不会自动回滚已经执行的数据库 migration，需要按数据库变更策略单独处理。
 
-## 上线验证与证据边界
+## 上线验证
 
-在真实内部域名、已批准访问源和生产数据库可用后，验证以下项目：
+平台提供 Service/Ingress 后，从批准的内网来源验证：
 
-- 浏览器访问 `/orchestapi/`，静态资源与客户端路由正常。
-- `GET /orchestapi/actuator/health` 返回 `UP` 且不暴露依赖细节。
-- 执行一个受控 REST 请求，以及一次 SSE suite run，确认长连接未被缓冲或超时中断。
-- 分别执行一个 `/orchestapi/mock/**` 请求和一个 `/orchestapi/webhook/**` 回调请求。
-- 从 allowlist 外的源地址访问，确认 Ingress/CIDR 策略拒绝；同时确认 NetworkPolicy 的 controller 命名空间选择器符合实际安装方式。
-- 记录一次回滚演练、TLS 握手和 PostgreSQL 连通性结果。
+```bash
+curl -fsS https://<internal-host>/orchestapi/actuator/health
+```
 
-仓库内的构建、测试和 Kustomize 渲染只能证明交付物的静态与本地行为，不能证明上述任何集群、网络、TLS、数据库或流量验证结果。
+还需验证 UI、REST、SSE、Mock、Webhook、TLS/DNS、数据库 migration，以及非 allowlist 来源被拒绝。仓库构建和 Kustomize 渲染只能证明本地交付物，不能替代真实集群、网络、数据库或入口验证。

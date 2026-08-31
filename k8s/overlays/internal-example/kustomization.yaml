@@ -10,7 +10,3 @@ images:
   - name: orchestapi
     newName: registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi
     newTag: replace-me
-
-patches:
-  - path: ingress-private.yaml
-  - path: network-policy-allow-ingress.yaml
