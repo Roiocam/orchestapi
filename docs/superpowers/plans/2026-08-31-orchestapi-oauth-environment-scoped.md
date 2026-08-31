@@ -33,7 +33,7 @@
 - Create backend/src/main/java/com/orchestrator/oauth/EnvironmentOAuthSnapshot.java。
 - Create backend/src/main/java/com/orchestrator/dto/EnvironmentOAuthRequest.java 和 EnvironmentOAuthResponse.java（按仓库 DTO package 实际位置落盘）。
 - Modify backend/src/main/java/com/orchestrator/model/Environment.java、EnvironmentRequest、EnvironmentResponse。
-- Create backend/src/main/resources/db/migration/V32__create_environment_oauth_configs.sql。
+- Create backend/src/main/resources/db/migration/V33__create_environment_oauth_configs.sql（主线已有 V32 hierarchy migration）。
 - Create backend/src/test/java/com/orchestrator/model/EnvironmentOAuthConfigTest.java。
 
 **Contract and implementation details**
