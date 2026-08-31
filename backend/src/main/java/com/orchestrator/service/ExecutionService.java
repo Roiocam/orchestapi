@@ -8,6 +8,9 @@ import com.orchestrator.dto.*;
 import com.orchestrator.exception.NotFoundException;
 import com.orchestrator.model.*;
 import com.orchestrator.model.enums.BodyType;
+import com.orchestrator.oauth.OAuthRequestAuthorizer;
+import com.orchestrator.oauth.OAuthTokenException;
+import com.orchestrator.oauth.RequestHeaderRedactor;
 import com.orchestrator.repository.EnvironmentFileRepository;
 import com.orchestrator.repository.EnvironmentRepository;
 import com.orchestrator.repository.TestStepRepository;
@@ -54,6 +57,8 @@ public class ExecutionService {
     private final RestTemplate restTemplate;
     private final VerificationService verificationService;
     private final ResponseValidationService responseValidationService;
+    private final OAuthRequestAuthorizer oauthRequestAuthorizer;
+    private final RequestHeaderRedactor requestHeaderRedactor;
 
     private static final Pattern ENV_VAR_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
     private static final Pattern STEP_VAR_PATTERN = Pattern.compile("\\{\\{([^}]+)}}");
@@ -515,7 +520,7 @@ public class ExecutionService {
         }
 
         // Build and resolve headers
-        HttpHeaders httpHeaders = buildHeaders(step, env, emptyVars, emptyInputs);
+        HttpHeaders httpHeaders = buildHeaders(step, env, emptyVars, emptyInputs, true);
 
         // Build cURL
         StringBuilder curl = new StringBuilder("curl -X ").append(step.getMethod().name());
@@ -523,6 +528,7 @@ public class ExecutionService {
         httpHeaders.forEach((key, values) -> {
             if (values != null) {
                 for (String value : values) {
+                    value = requestHeaderRedactor.redact(key, value);
                     curl.append(" \\\n  -H '").append(key).append(": ")
                             .append(value.replace("'", "'\\''")).append("'");
                 }
@@ -1216,8 +1222,30 @@ public class ExecutionService {
             url = builder.build().encode().toUriString();
         }
 
-        // 5. Build headers
-        HttpHeaders httpHeaders = buildHeaders(step, env, allExtractedVars, manualInputValues);
+        // 5. Build headers. Token acquisition failures are represented as a
+        // structured step error and must not reach the target service.
+        HttpHeaders httpHeaders = new HttpHeaders();
+        try {
+            httpHeaders = buildHeaders(step, env, allExtractedVars, manualInputValues, false);
+        } catch (OAuthTokenException exception) {
+            return StepExecutionResult.builder()
+                    .stepId(step.getId())
+                    .stepName(step.getName())
+                    .status("ERROR")
+                    .responseCode(0)
+                    .responseBody("")
+                    .responseHeaders(Collections.emptyMap())
+                    .durationMs(System.currentTimeMillis() - stepStart)
+                    .errorMessage(exception.getMessage())
+                    .fromCache(false)
+                    .extractedVariables(Collections.emptyMap())
+                    .requestUrl(url)
+                    .requestBody("")
+                    .requestHeaders(requestHeaderRedactor.toDisplayMap(httpHeaders))
+                    .requestQueryParams(resolvedQueryParams)
+                    .warnings(stepWarnings)
+                    .build();
+        }
 
         // 6. Build body based on body type
         Object body;
@@ -1240,12 +1268,7 @@ public class ExecutionService {
         org.springframework.http.HttpMethod springMethod = toSpringMethod(step.getMethod());
 
         // 8. Capture resolved request headers as flat map
-        Map<String, String> requestHeadersMap = new LinkedHashMap<>();
-        httpHeaders.forEach((key, values) -> {
-            if (values != null && !values.isEmpty()) {
-                requestHeadersMap.put(key, String.join(", ", values));
-            }
-        });
+        Map<String, String> requestHeadersMap = requestHeaderRedactor.toDisplayMap(httpHeaders);
 
         // 9. Execute with retry logic
         StepExecutionResult result = executeWithRetry(step, env, url, httpHeaders, body, springMethod,
@@ -1387,12 +1410,7 @@ public class ExecutionService {
             }
         } catch (RestClientException e) {
             log.error("HTTP call failed for step '{}': {}", step.getName(), e.getMessage());
-            Map<String, String> reqHeaders = new LinkedHashMap<>();
-            httpHeaders.forEach((key, values) -> {
-                if (values != null && !values.isEmpty()) {
-                    reqHeaders.put(key, String.join(", ", values));
-                }
-            });
+            Map<String, String> reqHeaders = requestHeaderRedactor.toDisplayMap(httpHeaders);
             return StepExecutionResult.builder()
                     .stepId(step.getId())
                     .stepName(step.getName())
@@ -1506,7 +1524,16 @@ public class ExecutionService {
 
     // ── Header building ─────────────────────────────────────────────────
 
-    private HttpHeaders buildHeaders(TestStep step, Environment env, Map<String, String> allExtractedVars, Map<String, String> manualInputValues) {
+    private HttpHeaders buildHeaders(TestStep step, Environment env,
+                                     Map<String, String> allExtractedVars,
+                                     Map<String, String> manualInputValues) {
+        return buildHeaders(step, env, allExtractedVars, manualInputValues, false);
+    }
+
+    private HttpHeaders buildHeaders(TestStep step, Environment env,
+                                     Map<String, String> allExtractedVars,
+                                     Map<String, String> manualInputValues,
+                                     boolean preview) {
         HttpHeaders httpHeaders = new HttpHeaders();
 
         // Parse disabled default headers for this step
@@ -1528,7 +1555,8 @@ public class ExecutionService {
             }
         }
 
-        // 2. Apply step-level headers (can override environment headers)
+        // 2. Apply explicit step-level headers before automatic OAuth so manual
+        // Authorization always wins and does not trigger Token acquisition.
         List<KeyValuePair> stepHeaders = parseKeyValuePairs(step.getHeaders());
         for (KeyValuePair kv : stepHeaders) {
             String resolvedKey = resolvePlaceholders(kv.getKey(), env, allExtractedVars);
@@ -1536,6 +1564,14 @@ public class ExecutionService {
             String resolvedValue = resolvePlaceholders(kv.getValue(), env, allExtractedVars);
             resolvedValue = resolveManualInputs(resolvedValue, manualInputValues);
             httpHeaders.set(resolvedKey, resolvedValue);
+        }
+
+        // 3. Apply automatic OAuth only when neither environment nor step supplied
+        // Authorization. Preview never calls the Token endpoint.
+        if (preview) {
+            oauthRequestAuthorizer.applyPreview(step, httpHeaders);
+        } else {
+            oauthRequestAuthorizer.apply(step, httpHeaders);
         }
 
         return httpHeaders;
