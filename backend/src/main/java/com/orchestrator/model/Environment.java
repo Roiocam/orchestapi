@@ -44,6 +44,10 @@ public class Environment {
     @Builder.Default
     private Set<EnvironmentConnector> connectors = new LinkedHashSet<>();
 
+    @OneToOne(mappedBy = "environment", cascade = CascadeType.ALL, orphanRemoval = true,
+            fetch = FetchType.LAZY, optional = false)
+    private EnvironmentOAuthConfig oauthConfig;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
