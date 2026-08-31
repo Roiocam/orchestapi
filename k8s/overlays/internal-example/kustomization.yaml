@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: orchestapi-internal
+
+resources:
+  - ../../base
+
+images:
+  - name: orchestapi
+    newName: registry.internal.invalid/orchestapi
+    newTag: replace-me
+
+patches:
+  - path: ingress-private.yaml
+  - path: network-policy-allow-ingress.yaml

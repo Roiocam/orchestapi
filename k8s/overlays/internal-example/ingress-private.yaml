@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orchestapi
+  annotations:
+    nginx.ingress.kubernetes.io/whitelist-source-range: 192.0.2.0/32
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: internal-nginx
+  tls:
+    - hosts:
+        - orchestapi.internal.invalid
+      secretName: orchestapi-tls
+  rules:
+    - host: orchestapi.internal.invalid
+      http:
+        paths:
+          - path: /orchestapi
+            pathType: Prefix
+            backend:
+              service:
+                name: orchestapi
+                port:
+                  number: 8080
