@@ -1009,7 +1009,19 @@ VITE_BASE_PATH=/orchestapi/ ./deploy.sh dev --skip-install
 
 **Nginx reverse proxy example:**
 
+Same pattern as agent-session frontend nginx — exact match for the base path
+(no trailing slash) plus the prefix location:
+
 ```nginx
+# Exact /orchestapi (no trailing slash) — do not omit; prefix location /orchestapi/ alone misses this.
+location = /orchestapi {
+    proxy_pass http://orchestapi:8080/orchestapi;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
 location /orchestapi/ {
     proxy_pass http://orchestapi:8080/orchestapi/;
     proxy_set_header Host $host;
@@ -1018,6 +1030,10 @@ location /orchestapi/ {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
+
+The app sets `server.tomcat.use-relative-redirects=true` so `/orchestapi` → `/orchestapi/`
+uses a relative Location header (same idea as agent-session
+`return 302 ${FRONTEND_BASE_PATH}/`), avoiding broken absolute redirects behind Kong.
 
 **Kubernetes Ingress example:**
 

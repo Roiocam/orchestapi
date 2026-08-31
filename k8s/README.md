@@ -62,11 +62,18 @@ OAuth Client 由 Starbucks/IdP 预先创建，Pod 使用 `client_credentials` �
 Service/Ingress 必须保持以下路径契约：
 
 ```text
+/orchestapi
 /orchestapi/
 /orchestapi/api/**
 /orchestapi/mock/**
 /orchestapi/webhook/**
 ```
+
+无尾斜杠的 `/orchestapi` 必须单独转发到应用（与 agent-session nginx
+`location = /agents` 同理）。只配 `location /orchestapi/` 时，浏览器访问
+`/orchestapi` 不会命中。应用侧启用 `server.tomcat.use-relative-redirects=true`，
+将 `/orchestapi` 相对重定向到 `/orchestapi/`，避免 Kong 把 Location 改成错误的
+host/scheme。
 
 首版保持 `replicas: 1`。SSE、Webhook 监听器、运行注册表和调度状态目前都在进程内，不能直接横向扩容。
 

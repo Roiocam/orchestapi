@@ -37,6 +37,13 @@ server:
   servlet:
     context-path: ${CONTEXT_PATH:/}
   forward-headers-strategy: framework
+  tomcat:
+    # Keep Tomcat's context-root slash redirect, but emit a relative Location
+    # (e.g. /orchestapi/) so browsers stay on the public host/scheme. Absolute
+    # redirects behind Kong become http://idp.stg.sbuxcf.net/... and break
+    # https://idp.stg.starbucks.net/orchestapi — same reason agent-session nginx
+    # uses `return 302 ${FRONTEND_BASE_PATH}/` (relative) instead of an absolute URL.
+    use-relative-redirects: true
 
 orchestapi:
   oauth:
