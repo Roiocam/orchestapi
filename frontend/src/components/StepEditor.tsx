@@ -19,6 +19,7 @@ import type {
   TestStepRequest,
   HttpMethodType,
   BodyType,
+  OAuthModeType,
   FormDataField,
   KeyValuePair,
   StepDependencyDto,
@@ -145,6 +146,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
   const [name, setName] = useState(step?.name ?? '')
   const [method, setMethod] = useState<HttpMethodType>(step?.method ?? 'GET')
   const [url, setUrl] = useState(step?.url ?? '')
+  const [oauthMode, setOauthMode] = useState<OAuthModeType>(step?.oauthMode ?? 'INHERIT')
 
   // ---- Headers state ----
   const [headers, setHeaders] = useState<KVRow[]>(
@@ -542,6 +544,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       cacheTtlSeconds: cacheable ? cacheTtlSeconds : 0,
       dependencyOnly,
       disabledDefaultHeaders: Array.from(disabledDefaultHeaders),
+      oauthMode,
       groupName: groupName.trim() || '',
       dependencies: dependencies.map(({ _clientId: _, ...rest }) => rest),
       responseHandlers: responseHandlers.map(({ _clientId: _, ...rest }) => rest),
@@ -947,6 +950,19 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                 />
               </Space>
             )}
+            <Space size={4}>
+              <span style={{ color: '#8c8c8c', fontSize: 11 }}>OAuth:</span>
+              <Select
+                size="small"
+                value={oauthMode}
+                onChange={setOauthMode}
+                options={[
+                  { label: 'Inherit deployment OAuth', value: 'INHERIT' },
+                  { label: 'Disable automatic OAuth', value: 'DISABLED' },
+                ]}
+                style={{ width: 190 }}
+              />
+            </Space>
           </Space>
         </div>
       </div>

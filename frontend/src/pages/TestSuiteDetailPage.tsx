@@ -283,6 +283,7 @@ export default function TestSuiteDetailPage() {
         cacheTtlSeconds: step.cacheTtlSeconds,
         dependencyOnly: step.dependencyOnly,
         disabledDefaultHeaders: step.disabledDefaultHeaders ?? [],
+        oauthMode: step.oauthMode ?? 'INHERIT',
         groupName: step.groupName ?? '',
         dependencies: step.dependencies.map(d => ({
           dependsOnStepId: d.dependsOnStepId,

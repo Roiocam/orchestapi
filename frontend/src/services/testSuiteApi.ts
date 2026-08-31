@@ -91,6 +91,7 @@ export async function exportSuite(suiteId: string) {
     cacheTtlSeconds: s.cacheTtlSeconds,
     dependencyOnly: s.dependencyOnly,
     disabledDefaultHeaders: s.disabledDefaultHeaders,
+    oauthMode: s.oauthMode ?? 'INHERIT',
     dependencies: s.dependencies.map((d) => ({
       dependsOnStepName: idToName.get(d.dependsOnStepId) || d.dependsOnStepId,
       useCache: d.useCache,
