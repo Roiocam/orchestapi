@@ -12,7 +12,7 @@ import java.util.UUID;
 
 public interface EnvironmentRepository extends JpaRepository<Environment, UUID>, JpaSpecificationExecutor<Environment> {
 
-    @Query("SELECT e FROM Environment e LEFT JOIN FETCH e.variables v LEFT JOIN FETCH e.headers h WHERE e.id = :id ORDER BY v.sortOrder, h.sortOrder")
+    @Query("SELECT e FROM Environment e LEFT JOIN FETCH e.variables v LEFT JOIN FETCH e.headers h LEFT JOIN FETCH e.oauthConfig WHERE e.id = :id ORDER BY v.sortOrder, h.sortOrder")
     Optional<Environment> findByIdWithDetails(UUID id);
 
     @Query("SELECT DISTINCT e FROM Environment e LEFT JOIN FETCH e.variables v WHERE e.id IN :ids ORDER BY v.sortOrder")
@@ -26,6 +26,9 @@ public interface EnvironmentRepository extends JpaRepository<Environment, UUID>,
 
     @Query("SELECT DISTINCT e FROM Environment e LEFT JOIN FETCH e.connectors c WHERE e.id IN :ids ORDER BY c.sortOrder")
     List<Environment> findByIdsWithConnectors(@Param("ids") List<UUID> ids);
+
+    @Query("SELECT DISTINCT e FROM Environment e LEFT JOIN FETCH e.oauthConfig WHERE e.id IN :ids")
+    List<Environment> findByIdsWithOAuthConfigs(@Param("ids") List<UUID> ids);
 
     boolean existsByName(String name);
 

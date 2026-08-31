@@ -41,4 +41,7 @@ public class EnvironmentRequest {
     @JsonSetter(nulls = Nulls.AS_EMPTY)
     @Builder.Default
     private List<ConnectorDto> connectors = new ArrayList<>();
+
+    @Valid
+    private EnvironmentOAuthRequest oauth;
 }

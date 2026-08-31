@@ -26,6 +26,7 @@ public class EnvironmentResponse {
     private List<VariableDto> variables;
     private List<HeaderDto> headers;
     private List<ConnectorDto> connectors;
+    private EnvironmentOAuthResponse oauth;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -78,6 +79,7 @@ public class EnvironmentResponse {
                 .variables(vars)
                 .headers(hdrs)
                 .connectors(conns)
+                .oauth(EnvironmentOAuthResponse.from(env.getOauthConfig()))
                 .createdAt(env.getCreatedAt())
                 .updatedAt(env.getUpdatedAt())
                 .build();

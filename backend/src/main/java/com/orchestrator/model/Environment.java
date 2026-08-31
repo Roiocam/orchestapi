@@ -1,5 +1,7 @@
 package com.orchestrator.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.orchestrator.oauth.EnvironmentOAuthSnapshot;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLRestriction;
@@ -43,6 +45,14 @@ public class Environment {
     @OrderBy("sortOrder")
     @Builder.Default
     private Set<EnvironmentConnector> connectors = new LinkedHashSet<>();
+
+    @OneToOne(mappedBy = "environment", cascade = CascadeType.ALL, orphanRemoval = true,
+            fetch = FetchType.LAZY, optional = false)
+    private EnvironmentOAuthConfig oauthConfig;
+
+    @Transient
+    @JsonIgnore
+    private EnvironmentOAuthSnapshot oauthSnapshot;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

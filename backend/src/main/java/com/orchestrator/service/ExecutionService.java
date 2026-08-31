@@ -9,6 +9,7 @@ import com.orchestrator.exception.NotFoundException;
 import com.orchestrator.model.*;
 import com.orchestrator.model.enums.BodyType;
 import com.orchestrator.oauth.OAuthRequestAuthorizer;
+import com.orchestrator.oauth.EnvironmentOAuthSnapshot;
 import com.orchestrator.oauth.OAuthTokenException;
 import com.orchestrator.oauth.RequestHeaderRedactor;
 import com.orchestrator.repository.EnvironmentFileRepository;
@@ -68,7 +69,8 @@ public class ExecutionService {
     public record PreparedExecution(
             List<UUID> executionOrder,
             Map<UUID, TestStep> stepMap,
-            Environment env
+            Environment env,
+            EnvironmentOAuthSnapshot oauth
     ) {}
 
     // ── Public API ──────────────────────────────────────────────────────
@@ -150,7 +152,7 @@ public class ExecutionService {
         Environment env = resolveEnvironment(envId, suite.getDefaultEnvironmentId());
         List<TestStep> steps = stepRepo.findBySuiteIdWithDetails(suiteId);
         if (steps.isEmpty()) {
-            return new PreparedExecution(Collections.emptyList(), Collections.emptyMap(), env);
+            return new PreparedExecution(Collections.emptyList(), Collections.emptyMap(), env, oauthSnapshot(env));
         }
         // Also load verifications + assertions (separate query to avoid Cartesian product)
         mergeVerifications(steps, suiteId);
@@ -164,7 +166,7 @@ public class ExecutionService {
                 .filter(id -> !stepMap.get(id).isDependencyOnly())
                 .toList();
 
-        return new PreparedExecution(executionOrder, stepMap, env);
+        return new PreparedExecution(executionOrder, stepMap, env, oauthSnapshot(env));
     }
 
     /** Load all data for a single step run inside a transaction. */
@@ -183,12 +185,13 @@ public class ExecutionService {
         }
         Map<UUID, Set<UUID>> depGraph = buildDependencyGraph(allSteps);
         List<UUID> executionOrder = topologicalSortSubgraph(stepId, depGraph);
-        return new PreparedExecution(executionOrder, stepMap, env);
+        return new PreparedExecution(executionOrder, stepMap, env, oauthSnapshot(env));
     }
 
     /** Execute a prepared run, optionally streaming each step result via callback. */
     public SuiteExecutionResult executePrepared(PreparedExecution prepared,
                                                  Consumer<StepExecutionResult> onStepComplete) {
+        bindPreparedOAuthSnapshot(prepared);
         if (prepared.executionOrder().isEmpty()) {
             return SuiteExecutionResult.builder()
                     .status("SUCCESS")
@@ -205,6 +208,7 @@ public class ExecutionService {
                                                  UUID runId,
                                                  RunRegistry runRegistry,
                                                  SseEmitter emitter) {
+        bindPreparedOAuthSnapshot(prepared);
         if (prepared.executionOrder().isEmpty()) {
             return SuiteExecutionResult.builder()
                     .status("SUCCESS")
@@ -223,6 +227,7 @@ public class ExecutionService {
      * Steps with #{name} (no default) are SKIPPED.
      */
     public SuiteExecutionResult executePreparedNonInteractive(PreparedExecution prepared) {
+        bindPreparedOAuthSnapshot(prepared);
         if (prepared.executionOrder().isEmpty()) {
             return SuiteExecutionResult.builder()
                     .status("SUCCESS").steps(Collections.emptyList()).totalDurationMs(0).build();
@@ -477,7 +482,26 @@ public class ExecutionService {
         // Also load connectors (needed for verification execution)
         envRepo.findByIdWithConnectors(envId).ifPresent(ec -> env.setConnectors(ec.getConnectors()));
 
+        env.setOauthSnapshot(oauthSnapshot(env));
+
         return env;
+    }
+
+    private void bindPreparedOAuthSnapshot(PreparedExecution prepared) {
+        if (prepared != null && prepared.env() != null) {
+            prepared.env().setOauthSnapshot(prepared.oauth());
+        }
+    }
+
+    private EnvironmentOAuthSnapshot oauthSnapshot(Environment env) {
+        if (env == null) {
+            return null;
+        }
+        if (env.getOauthSnapshot() != null) {
+            return env.getOauthSnapshot();
+        }
+        EnvironmentOAuthConfig config = env.getOauthConfig();
+        return config != null ? config.snapshot() : null;
     }
 
     // ── cURL generation ─────────────────────────────────────────────────
@@ -1568,10 +1592,11 @@ public class ExecutionService {
 
         // 3. Apply automatic OAuth only when neither environment nor step supplied
         // Authorization. Preview never calls the Token endpoint.
+        EnvironmentOAuthSnapshot oauth = oauthSnapshot(env);
         if (preview) {
-            oauthRequestAuthorizer.applyPreview(step, httpHeaders);
+            oauthRequestAuthorizer.applyPreview(step, oauth, httpHeaders);
         } else {
-            oauthRequestAuthorizer.apply(step, httpHeaders);
+            oauthRequestAuthorizer.apply(step, oauth, httpHeaders);
         }
 
         return httpHeaders;

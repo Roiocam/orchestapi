@@ -1,6 +1,5 @@
 package com.orchestrator.oauth;
 
-import com.orchestrator.config.OAuthProperties;
 import com.orchestrator.model.TestStep;
 import com.orchestrator.model.enums.OAuthMode;
 import org.springframework.http.HttpHeaders;
@@ -11,34 +10,32 @@ import java.util.Objects;
 @Component
 public class DefaultOAuthRequestAuthorizer implements OAuthRequestAuthorizer {
 
-    private final OAuthProperties properties;
     private final OAuthTokenProvider tokenProvider;
 
-    public DefaultOAuthRequestAuthorizer(
-            OAuthProperties properties, OAuthTokenProvider tokenProvider) {
-        this.properties = Objects.requireNonNull(properties, "properties");
+    public DefaultOAuthRequestAuthorizer(OAuthTokenProvider tokenProvider) {
         this.tokenProvider = Objects.requireNonNull(tokenProvider, "tokenProvider");
     }
 
     @Override
-    public void apply(TestStep step, HttpHeaders headers) {
-        if (!shouldApply(step, headers)) {
+    public void apply(TestStep step, EnvironmentOAuthSnapshot oauth, HttpHeaders headers) {
+        if (!shouldApply(step, oauth, headers)) {
             return;
         }
-        headers.set(HttpHeaders.AUTHORIZATION, tokenProvider.getToken().authorizationValue());
+        headers.set(HttpHeaders.AUTHORIZATION, tokenProvider.getToken(oauth).authorizationValue());
     }
 
     @Override
-    public void applyPreview(TestStep step, HttpHeaders headers) {
-        if (!shouldApply(step, headers)) {
+    public void applyPreview(TestStep step, EnvironmentOAuthSnapshot oauth, HttpHeaders headers) {
+        if (!shouldApply(step, oauth, headers)) {
             return;
         }
         headers.set(HttpHeaders.AUTHORIZATION, "Bearer <redacted>");
     }
 
-    private boolean shouldApply(TestStep step, HttpHeaders headers) {
+    private boolean shouldApply(TestStep step, EnvironmentOAuthSnapshot oauth, HttpHeaders headers) {
         return headers != null
-                && properties.isEnabled()
+                && oauth != null
+                && oauth.enabled()
                 && step != null
                 && (step.getOauthMode() == null || step.getOauthMode() == OAuthMode.INHERIT)
                 && !headers.containsKey(HttpHeaders.AUTHORIZATION);

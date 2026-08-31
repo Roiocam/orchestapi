@@ -44,15 +44,3 @@ server:
     # https://idp.stg.starbucks.net/orchestapi — same reason agent-session nginx
     # uses `return 302 ${FRONTEND_BASE_PATH}/` (relative) instead of an absolute URL.
     use-relative-redirects: true
-
-orchestapi:
-  oauth:
-    enabled: ${ORCHESTAPI_OAUTH_ENABLED:false}
-    token-endpoint: ${ORCHESTAPI_OAUTH_TOKEN_ENDPOINT:}
-    client-id: ${ORCHESTAPI_OAUTH_CLIENT_ID:}
-    client-secret: ${ORCHESTAPI_OAUTH_CLIENT_SECRET:}
-    scopes: ${ORCHESTAPI_OAUTH_SCOPES:}
-    audience: ${ORCHESTAPI_OAUTH_AUDIENCE:}
-    client-auth-method: ${ORCHESTAPI_OAUTH_CLIENT_AUTH_METHOD:client_secret_basic}
-    refresh-skew-seconds: ${ORCHESTAPI_OAUTH_REFRESH_SKEW_SECONDS:60}
-    request-timeout-ms: ${ORCHESTAPI_OAUTH_REQUEST_TIMEOUT_MS:10000}

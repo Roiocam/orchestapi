@@ -946,21 +946,22 @@ kubectl kustomize k8s/overlays/<approved-overlay> > /tmp/orchestapi.yaml
 kubectl apply -k k8s/overlays/<approved-overlay>
 ```
 
-The checked-in `k8s/overlays/internal-example` is deliberately non-deployable
-and contains `.invalid` host/TLS/CIDR placeholders. Replace it with values
-approved by the Starbucks platform owner before applying.
+The checked-in `k8s/overlays/internal-example` is deliberately an example with
+placeholder namespace and image tag. Replace it with values approved by the
+Starbucks platform owner before applying.
 
-#### Deployment OAuth Service Account
+#### Environment OAuth Service Account
 
-如目标服务要求 OAuth，优先使用 Deployment 级 Starbucks Service Account：平台/IdP
-预先创建 OAuth Client，应用以 `client_credentials` 自动获取并缓存短期 Bearer
-Token。只在平台管理的 overlay 中填写 Token Endpoint、Client ID、scope/audience
-等非敏感配置，并将 Client Secret 通过外部 Secret `orchestapi-oauth` 的
-`client-secret` key 引用；仓库不创建 IdP Client，也不提交 Secret 或 Token。Pod
-必须具备到 Token Endpoint 的 DNS、TLS 和受控 egress。
+如目标服务要求 OAuth，平台/IdP 预先创建 OAuth Client，管理员在对应 Environment
+详情页的 OAuth 2.0 Client Credentials 区域填写 Token Endpoint、Client ID、
+scope/audience、认证方式和 Client Secret。Client Secret 由 Environment API 脱敏
+保存，编辑时未修改的值会保留，不能通过列表、导出或 API 响应读取明文；仓库不创建
+IdP Client，也不提交 Secret 或 Token。Pod 必须具备到 Token Endpoint 的 DNS、TLS
+和受控 egress。
 
-该能力不改变入站应用认证。Step 显式 `Authorization` 和现有手工依赖 Token 仍受
-支持；浏览器、执行结果、curl 预览和 SSE 不会接触目标 API Token。
+应用只在该 Environment 第一个符合条件的 Step 执行前获取 Token，并在进程内按
+Environment 缓存。该能力不改变入站应用认证。Step 显式 `Authorization` 和现有手工
+依赖 Token 仍受支持；浏览器、执行结果、curl 预览和 SSE 不会接触目标 API Token。
 
 ### Docker Compose
 
@@ -1077,23 +1078,27 @@ For local development, both default to `/` — no configuration needed.
 | `CONTEXT_PATH` | `/` | Servlet context path (e.g., `/app/orchestapi`) |
 | `VITE_BASE_PATH` | `/` | Frontend base path (Docker build arg, must match `CONTEXT_PATH`) |
 
-### Outbound OAuth Service Account Environment Variables
+### Environment OAuth 配置
 
-这些变量只控制应用访问目标服务时的出站 OAuth。首版默认关闭；启用时，
-`ORCHESTAPI_OAUTH_CLIENT_SECRET` 必须来自外部 Kubernetes Secret，不要写入
-Deployment 的明文 `value`、ConfigMap、Git 或前端配置。
+出站 OAuth 是 Environment 级配置，不再读取 `ORCHESTAPI_OAUTH_*` 全局环境变量。
+在 Environment 详情页的 OAuth 2.0 Client Credentials 区域填写：
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ORCHESTAPI_OAUTH_ENABLED` | `false` | Enable automatic `client_credentials` token injection |
-| `ORCHESTAPI_OAUTH_TOKEN_ENDPOINT` | empty | Approved IdP Token Endpoint URL |
-| `ORCHESTAPI_OAUTH_CLIENT_ID` | empty | Pre-provisioned Starbucks Service Account client ID |
-| `ORCHESTAPI_OAUTH_CLIENT_SECRET` | external Secret | Secret `orchestapi-oauth/client-secret`; never expose in source or UI |
-| `ORCHESTAPI_OAUTH_SCOPES` | empty | Optional space-delimited OAuth scopes |
-| `ORCHESTAPI_OAUTH_AUDIENCE` | empty | Optional target audience |
-| `ORCHESTAPI_OAUTH_CLIENT_AUTH_METHOD` | `client_secret_basic` | `client_secret_basic` or `client_secret_post` |
-| `ORCHESTAPI_OAUTH_REFRESH_SKEW_SECONDS` | `60` | Refresh before expiry |
-| `ORCHESTAPI_OAUTH_REQUEST_TIMEOUT_MS` | `10000` | Token request timeout |
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `false` | 是否为该 Environment 自动注入 `client_credentials` Token |
+| `tokenEndpoint` | empty | 已批准的 IdP Token Endpoint URL |
+| `clientId` | empty | Starbucks/IdP 预先创建的 Service Account Client ID |
+| `clientSecret` | empty | 由 Environment API 脱敏保存；不会在响应或导出中返回明文 |
+| `scopes` | empty | 可选的空格分隔 OAuth scopes |
+| `audience` | empty | 可选的目标 audience |
+| `clientAuthMethod` | `client_secret_basic` | `client_secret_basic` 或 `client_secret_post` |
+| `refreshSkewSeconds` | `60` | Token 到期前多少秒刷新 |
+| `requestTimeoutMs` | `10000` | Token 请求超时 |
+
+Token 只在执行第一个符合条件的请求前获取，按 Environment 在进程内缓存；不会在
+Environment 保存、页面加载、应用启动或 curl 预览时请求 Token。Step 的 OAuth
+模式仍可选择 `INHERIT`（默认）或 `DISABLED`，手工 `Authorization` Header 优先。
+Client Secret 不要放入 Deployment、ConfigMap、导出文件、Git 或日志。
 
 ### Limits
 
