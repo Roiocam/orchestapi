@@ -27,5 +27,8 @@ test-app/
 # Docs
 docs/
 
+# Local implementation worktrees
+.worktrees/
+
 # Landing page (hosted separately)
 landing/
