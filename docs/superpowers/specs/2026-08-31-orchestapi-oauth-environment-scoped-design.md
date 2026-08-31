@@ -1,6 +1,6 @@
 # OrchestAPI Environment-scoped OAuth Service Account Token 设计
 
-**状态：** 待用户 review
+**状态：** 已确认，待按实施计划执行
 
 **日期：** 2026-08-31
 
