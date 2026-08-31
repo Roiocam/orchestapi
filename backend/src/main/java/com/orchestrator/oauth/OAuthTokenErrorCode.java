@@ -1,0 +1,8 @@
+package com.orchestrator.oauth;
+
+public enum OAuthTokenErrorCode {
+    OAUTH_CONFIGURATION_INVALID,
+    OAUTH_TOKEN_ENDPOINT_UNAVAILABLE,
+    OAUTH_TOKEN_REQUEST_REJECTED,
+    OAUTH_TOKEN_RESPONSE_INVALID
+}
