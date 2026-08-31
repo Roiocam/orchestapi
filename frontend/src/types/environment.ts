@@ -2,6 +2,8 @@ export type HeaderValueType = 'STATIC' | 'VARIABLE' | 'UUID' | 'ISO_TIMESTAMP'
 
 export type VariableValueType = 'STATIC' | 'UUID' | 'ISO_TIMESTAMP'
 
+export type OAuthClientAuthMethod = 'client_secret_basic' | 'client_secret_post'
+
 export interface VariableDto {
   id?: string
   key: string
@@ -28,6 +30,34 @@ export interface ConnectorDto {
   config: Record<string, string>
 }
 
+export interface EnvironmentOAuthResponse {
+  enabled: boolean
+  tokenEndpoint: string
+  clientId: string
+  /** Always masked by the API when a secret has been configured. */
+  clientSecret: string
+  clientSecretConfigured: boolean
+  scopes: string
+  audience: string
+  clientAuthMethod: OAuthClientAuthMethod
+  refreshSkewSeconds: number
+  requestTimeoutMs: number
+}
+
+export interface EnvironmentOAuthRequest {
+  enabled: boolean
+  tokenEndpoint: string
+  clientId: string
+  /** Omit this field to preserve an existing secret. */
+  clientSecret?: string
+  scopes: string
+  audience: string
+  clientAuthMethod: OAuthClientAuthMethod
+  refreshSkewSeconds: number
+  requestTimeoutMs: number
+  clearClientSecret?: boolean
+}
+
 export interface Environment {
   id: string
   name: string
@@ -35,6 +65,7 @@ export interface Environment {
   variables: VariableDto[]
   headers: HeaderDto[]
   connectors: ConnectorDto[]
+  oauth: EnvironmentOAuthResponse
   createdAt: string
   updatedAt: string
 }
@@ -45,6 +76,7 @@ export interface EnvironmentRequest {
   variables: VariableDto[]
   headers: HeaderDto[]
   connectors: ConnectorDto[]
+  oauth?: EnvironmentOAuthRequest
 }
 
 export interface EnvironmentFileResponse {

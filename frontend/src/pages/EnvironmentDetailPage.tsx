@@ -5,6 +5,7 @@ import {
   Collapse,
   Form,
   Input,
+  InputNumber,
   Button,
   Space,
   Switch,
@@ -29,7 +30,17 @@ import {
   UploadOutlined,
   DownloadOutlined,
 } from '@ant-design/icons'
-import type { VariableDto, HeaderDto, HeaderValueType, VariableValueType, ConnectorDto, ConnectorType, EnvironmentFileResponse } from '../types/environment'
+import type {
+  VariableDto,
+  HeaderDto,
+  HeaderValueType,
+  VariableValueType,
+  ConnectorDto,
+  ConnectorType,
+  EnvironmentFileResponse,
+  EnvironmentOAuthRequest,
+  OAuthClientAuthMethod,
+} from '../types/environment'
 import { environmentApi } from '../services/environmentApi'
 
 const { Title } = Typography
@@ -141,6 +152,34 @@ const CONNECTOR_TYPE_OPTIONS: { label: string; value: ConnectorType }[] = [
   { label: 'MongoDB', value: 'MONGODB' },
 ]
 
+const MASKED_SECRET = '••••••••'
+
+interface OAuthFormState {
+  enabled: boolean
+  tokenEndpoint: string
+  clientId: string
+  clientSecret: string
+  scopes: string
+  audience: string
+  clientAuthMethod: OAuthClientAuthMethod
+  refreshSkewSeconds: number
+  requestTimeoutMs: number
+}
+
+function createDefaultOAuth(): OAuthFormState {
+  return {
+    enabled: false,
+    tokenEndpoint: '',
+    clientId: '',
+    clientSecret: '',
+    scopes: '',
+    audience: '',
+    clientAuthMethod: 'client_secret_basic',
+    refreshSkewSeconds: 60,
+    requestTimeoutMs: 10_000,
+  }
+}
+
 // Stable client-side ID for new rows
 let nextClientId = 1
 
@@ -183,6 +222,10 @@ export default function EnvironmentDetailPage() {
   const [uploadFileKey, setUploadFileKey] = useState('')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [oauth, setOAuth] = useState<OAuthFormState>(() => createDefaultOAuth())
+  const [oauthSecretConfigured, setOAuthSecretConfigured] = useState(false)
+  const [oauthSecretDirty, setOAuthSecretDirty] = useState(false)
+  const [oauthClearSecret, setOAuthClearSecret] = useState(false)
   const clientIdCounter = useRef(nextClientId)
 
   const genClientId = () => {
@@ -202,6 +245,28 @@ export default function EnvironmentDetailPage() {
         setVariables(env.variables.map((v) => ({ ...v, _clientId: v.id ?? genClientId() })))
         setHeaders(env.headers.map((h) => ({ ...h, _clientId: h.id ?? genClientId() })))
         setConnectors((env.connectors ?? []).map((c) => ({ ...c, _clientId: c.id ?? genClientId() })))
+        const serverOAuth = env.oauth
+        if (serverOAuth) {
+          setOAuth({
+            enabled: serverOAuth.enabled,
+            tokenEndpoint: serverOAuth.tokenEndpoint ?? '',
+            clientId: serverOAuth.clientId ?? '',
+            clientSecret: serverOAuth.clientSecret ?? '',
+            scopes: serverOAuth.scopes ?? '',
+            audience: serverOAuth.audience ?? '',
+            clientAuthMethod: serverOAuth.clientAuthMethod === 'client_secret_post'
+              ? 'client_secret_post'
+              : 'client_secret_basic',
+            refreshSkewSeconds: serverOAuth.refreshSkewSeconds ?? 60,
+            requestTimeoutMs: serverOAuth.requestTimeoutMs ?? 10_000,
+          })
+          setOAuthSecretConfigured(serverOAuth.clientSecretConfigured)
+        } else {
+          setOAuth(createDefaultOAuth())
+          setOAuthSecretConfigured(false)
+        }
+        setOAuthSecretDirty(false)
+        setOAuthClearSecret(false)
       } catch {
         if (cancelled) return
         message.error('Failed to load environment')
@@ -300,6 +365,16 @@ export default function EnvironmentDetailPage() {
   const emptyConnNames = new Set(connectors.map((c, i) => !c.name.trim() ? i : -1).filter((i) => i >= 0))
   const hasEmptyFields = emptyVarKeys.size > 0 || emptyVarValues.size > 0 || emptyHdrKeys.size > 0 || emptyConnNames.size > 0
 
+  const updateOAuth = <K extends keyof OAuthFormState>(field: K, value: OAuthFormState[K]) => {
+    setOAuth((previous) => ({ ...previous, [field]: value }))
+  }
+
+  const updateOAuthSecret = (value: string) => {
+    setOAuth((previous) => ({ ...previous, clientSecret: value }))
+    setOAuthSecretDirty(true)
+    setOAuthClearSecret(false)
+  }
+
   const handleSave = async () => {
     setShowErrors(true)
     if (hasDuplicates) {
@@ -310,9 +385,43 @@ export default function EnvironmentDetailPage() {
       message.error('Please fill in all required fields')
       return
     }
+    if (oauth.enabled) {
+      if (!oauth.tokenEndpoint.trim() || !oauth.clientId.trim()) {
+        message.error('OAuth token endpoint and client ID are required when OAuth is enabled')
+        return
+      }
+      if (oauthClearSecret || (!oauthSecretConfigured && !oauth.clientSecret)) {
+        message.error('OAuth client secret is required when OAuth is enabled')
+        return
+      }
+      if (!Number.isFinite(oauth.requestTimeoutMs) || oauth.requestTimeoutMs <= 0) {
+        message.error('OAuth request timeout must be greater than zero')
+        return
+      }
+      if (!Number.isFinite(oauth.refreshSkewSeconds) || oauth.refreshSkewSeconds < 0) {
+        message.error('OAuth refresh skew must not be negative')
+        return
+      }
+    }
     try {
       const values = await form.validateFields()
       setSaving(true)
+
+      const oauthRequest: EnvironmentOAuthRequest = {
+        enabled: oauth.enabled,
+        tokenEndpoint: oauth.tokenEndpoint.trim(),
+        clientId: oauth.clientId.trim(),
+        scopes: oauth.scopes.trim(),
+        audience: oauth.audience.trim(),
+        clientAuthMethod: oauth.clientAuthMethod,
+        refreshSkewSeconds: oauth.refreshSkewSeconds,
+        requestTimeoutMs: oauth.requestTimeoutMs,
+        ...(oauthClearSecret
+          ? { clearClientSecret: true }
+          : (oauthSecretDirty || !oauthSecretConfigured)
+            ? { clientSecret: oauth.clientSecret }
+            : {}),
+      }
 
       const request = {
         name: values.name,
@@ -320,6 +429,7 @@ export default function EnvironmentDetailPage() {
         variables: variables.map(({ _clientId, ...rest }) => rest),
         headers: headers.map(({ _clientId, ...rest }) => rest),
         connectors: connectors.map(({ _clientId, ...rest }) => rest),
+        oauth: oauthRequest,
       }
 
       if (isNew) {
@@ -715,6 +825,130 @@ export default function EnvironmentDetailPage() {
             </Form.Item>
           </div>
         </Form>
+      </Card>
+
+      <Card
+        size="small"
+        title="OAuth 2.0 Client Credentials"
+        extra={
+          <Space size={8}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Acquire a token lazily before the first eligible request
+            </Typography.Text>
+            <Switch checked={oauth.enabled} onChange={(checked) => updateOAuth('enabled', checked)} />
+          </Space>
+        }
+        style={{ marginBottom: 12 }}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Token Endpoint</div>
+            <Input
+              value={oauth.tokenEndpoint}
+              onChange={(e) => updateOAuth('tokenEndpoint', e.target.value)}
+              placeholder="https://auth.example.com/oauth2/token"
+              disabled={!oauth.enabled}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Client ID</div>
+            <Input
+              value={oauth.clientId}
+              onChange={(e) => updateOAuth('clientId', e.target.value)}
+              placeholder="OAuth client ID"
+              disabled={!oauth.enabled}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Client Secret</div>
+            <Space.Compact style={{ width: '100%' }}>
+              <Input.Password
+                value={oauth.clientSecret}
+                onChange={(e) => updateOAuthSecret(e.target.value)}
+                placeholder={oauthSecretConfigured ? 'Saved secret (masked)' : 'OAuth client secret'}
+                visibilityToggle={false}
+                disabled={!oauth.enabled && !oauthSecretConfigured}
+              />
+              {oauthSecretConfigured && (
+                <Button
+                  danger={oauthClearSecret}
+                  type="default"
+                  onClick={() => {
+                    if (oauthClearSecret) {
+                      setOAuth((previous) => ({ ...previous, clientSecret: MASKED_SECRET }))
+                      setOAuthSecretDirty(false)
+                      setOAuthClearSecret(false)
+                    } else {
+                      setOAuth((previous) => ({ ...previous, clientSecret: '' }))
+                      setOAuthSecretDirty(true)
+                      setOAuthClearSecret(true)
+                    }
+                  }}
+                >
+                  {oauthClearSecret ? 'Undo clear' : 'Clear'}
+                </Button>
+              )}
+            </Space.Compact>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {oauthClearSecret
+                ? 'The saved secret will be removed when you save.'
+                : oauthSecretConfigured
+                  ? 'The saved value is masked and is never returned to the browser.'
+                  : 'Stored by the Environment API as a secret.'}
+            </Typography.Text>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Client Authentication</div>
+            <Select
+              value={oauth.clientAuthMethod}
+              onChange={(value: OAuthClientAuthMethod) => updateOAuth('clientAuthMethod', value)}
+              options={[
+                { label: 'HTTP Basic (client_secret_basic)', value: 'client_secret_basic' },
+                { label: 'Form body (client_secret_post)', value: 'client_secret_post' },
+              ]}
+              style={{ width: '100%' }}
+              disabled={!oauth.enabled}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Scopes</div>
+            <Input
+              value={oauth.scopes}
+              onChange={(e) => updateOAuth('scopes', e.target.value)}
+              placeholder="scope.read scope.write"
+              disabled={!oauth.enabled}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Audience</div>
+            <Input
+              value={oauth.audience}
+              onChange={(e) => updateOAuth('audience', e.target.value)}
+              placeholder="Optional audience"
+              disabled={!oauth.enabled}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Refresh Skew (seconds)</div>
+            <InputNumber
+              min={0}
+              value={oauth.refreshSkewSeconds}
+              onChange={(value) => updateOAuth('refreshSkewSeconds', value ?? 0)}
+              style={{ width: '100%' }}
+              disabled={!oauth.enabled}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Token Request Timeout (ms)</div>
+            <InputNumber
+              min={1}
+              value={oauth.requestTimeoutMs}
+              onChange={(value) => updateOAuth('requestTimeoutMs', value ?? 10_000)}
+              style={{ width: '100%' }}
+              disabled={!oauth.enabled}
+            />
+          </div>
+        </div>
       </Card>
 
       <Card

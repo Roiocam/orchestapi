@@ -23,7 +23,12 @@ import {
   CloseCircleFilled,
 } from '@ant-design/icons'
 import type { FilterDropdownProps } from 'antd/es/table/interface'
-import type { Environment, EnvironmentRequest, PageResponse } from '../types/environment'
+import type {
+  Environment,
+  EnvironmentOAuthRequest,
+  EnvironmentRequest,
+  PageResponse,
+} from '../types/environment'
 import { environmentApi, type EnvironmentListParams } from '../services/environmentApi'
 
 
@@ -33,6 +38,20 @@ const COLUMN_LABELS: Record<string, string> = {
 }
 
 function exportEnvironment(env: Environment) {
+  // OAuth client secrets are intentionally never exportable. Keep the non-secret
+  // settings as a disabled template so an import cannot accidentally activate it.
+  const oauth: EnvironmentOAuthRequest | undefined = env.oauth
+    ? {
+        enabled: false,
+        tokenEndpoint: env.oauth.tokenEndpoint,
+        clientId: env.oauth.clientId,
+        scopes: env.oauth.scopes,
+        audience: env.oauth.audience,
+        clientAuthMethod: env.oauth.clientAuthMethod,
+        refreshSkewSeconds: env.oauth.refreshSkewSeconds,
+        requestTimeoutMs: env.oauth.requestTimeoutMs,
+      }
+    : undefined
   const payload: EnvironmentRequest = {
     name: env.name,
     baseUrl: env.baseUrl,
@@ -43,6 +62,7 @@ function exportEnvironment(env: Environment) {
       headerValue,
     })),
     connectors: [],
+    ...(oauth ? { oauth } : {}),
   }
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -243,6 +263,24 @@ export default function EnvironmentsPage() {
           variables: parsed.variables ?? [],
           headers: parsed.headers ?? [],
           connectors: parsed.connectors ?? [],
+          oauth: parsed.oauth
+            ? {
+                enabled: parsed.oauth.enabled ?? false,
+                tokenEndpoint: parsed.oauth.tokenEndpoint ?? '',
+                clientId: parsed.oauth.clientId ?? '',
+                ...(parsed.oauth.clientSecret !== undefined
+                  ? { clientSecret: parsed.oauth.clientSecret }
+                  : {}),
+                scopes: parsed.oauth.scopes ?? '',
+                audience: parsed.oauth.audience ?? '',
+                clientAuthMethod: parsed.oauth.clientAuthMethod === 'client_secret_post'
+                  ? 'client_secret_post'
+                  : 'client_secret_basic',
+                refreshSkewSeconds: parsed.oauth.refreshSkewSeconds ?? 60,
+                requestTimeoutMs: parsed.oauth.requestTimeoutMs ?? 10_000,
+                clearClientSecret: false,
+              }
+            : undefined,
         })
       } catch (err) {
         if (err instanceof SyntaxError) {
@@ -327,6 +365,19 @@ export default function EnvironmentsPage() {
       key: 'headers',
       width: 80,
       render: (hdrs: Environment['headers']) => <Tag>{hdrs.length}</Tag>,
+    },
+    {
+      title: 'OAuth',
+      key: 'oauth',
+      width: 120,
+      render: (_: unknown, record: Environment) => (
+        <Space size={4}>
+          <Tag color={record.oauth?.enabled ? 'green' : undefined}>
+            {record.oauth?.enabled ? 'enabled' : 'disabled'}
+          </Tag>
+          {record.oauth?.clientSecretConfigured && <Tag color="orange">secret</Tag>}
+        </Space>
+      ),
     },
     {
       title: 'Actions',
