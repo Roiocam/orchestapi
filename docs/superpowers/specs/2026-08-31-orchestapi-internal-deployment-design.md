@@ -2,9 +2,9 @@
 
 ## 目标与范围
 
-本次把 OrchestAPI 的生产交付改造成与 Agent Session 相同的内部 Kubernetes 部署习惯：镜像由 CI 构建，运行参数由 Kubernetes 注入，PostgreSQL 是外部依赖，并通过 Ingress 提供同域路径入口。
+本次把 OrchestAPI 的生产交付改造成与 Agent Session 相同的内部 Kubernetes 部署习惯：前端和后端由构建机本地或 CI 构建，Docker 只封装已生成的 JAR，运行参数由 Kubernetes 注入，PostgreSQL 是外部依赖，并通过 Ingress 提供同域路径入口。
 
-用户选择最小改造的单镜像方案。现有 root `Dockerfile` 仍负责把 Vite 静态文件嵌入 Spring Boot JAR；本次不拆分前端和后端，不引入 Keycloak、Redis 或新的应用认证，也不改变 REST DTO 和业务功能。
+用户选择最小改造的单镜像方案。`deploy.sh` 使用 `VITE_BASE_PATH=/orchestapi/` 构建前端，并通过 Maven `frontend-static` profile 把静态资源嵌入 Spring Boot JAR；root `Dockerfile` 只使用 Starbucks 内部 Java 运行时镜像封装该 JAR。本次不拆分前端和后端，不引入 Keycloak、Redis 或新的应用认证，也不改变 REST DTO 和业务功能。
 
 对应的验收项位于 `docs/intent/2026-08-31-internal-deployment/03-acceptance-checklist.md`。
 
@@ -56,7 +56,7 @@
 
 1. 为路径前缀和生产安全收紧的最小配置变更；
 2. Kubernetes base 与示例 internal overlay；
-3. `.env`/Secret 键说明、内部构建、发布、回滚和集群验证文档；
-4. focused backend tests、frontend production build 与 `kubectl kustomize` 渲染检查。
+3. `deploy.sh`、本地 Maven JAR 构建、Starbucks runtime-only 镜像封装、`.env`/Secret 键说明、发布、回滚和集群验证文档；
+4. focused backend tests、frontend production build、JAR 静态资源检查与 `kubectl kustomize` 渲染检查。
 
 真实集群部署还需要平台提供 host、namespace、Ingress 类型/CIDR、TLS Secret、PostgreSQL endpoint 和创建的数据库 Secret。代码库验证不能替代该环境的 rollout、Ingress allowlist 和实际数据库连通性证明。

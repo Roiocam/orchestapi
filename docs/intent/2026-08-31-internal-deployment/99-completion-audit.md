@@ -17,9 +17,9 @@
 | 前端基路径 | `VITE_BASE_PATH=/orchestapi/ npm --prefix frontend run build` | 通过；输出产物带 `/orchestapi/` 基路径。 |
 | Kubernetes 渲染 | `kubectl kustomize k8s/overlays/internal-example` | 通过；输出 ConfigMap、Service、Deployment、Ingress、NetworkPolicy 共 5 个资源。 |
 | 清单安全性 | 渲染检查与 `rg '^kind: Secret$' k8s` | 保持单副本、统一前缀与 `secretKeyRef`；未提交 Secret 清单。 |
-| 最终镜像 | `docker build`，传入 `VITE_BASE_PATH`、`APP_VERSION=verification`、`VCS_REF` | 通过。 |
-| 镜像运行时 | `docker inspect orchestapi:verification` | 返回 `verification 66841bfe54b1d2c34cc5c17bf0e86b918abd5ed7 orchestapi`。 |
-| 本地容器冒烟 | 临时 PostgreSQL + `orchestapi:verification`，请求 `http://localhost:18080/orchestapi/actuator/health` | 返回精确 `{"status":"UP"}`，不含依赖 details；临时容器和网络已清理。 |
+| 最终镜像 | `./deploy.sh verification2 --skip-install --platform linux/amd64` | 通过；本地前端构建、Java 21 Maven JAR 打包和 Starbucks runtime-only `docker build` 均完成。 |
+| 镜像运行时 | `docker inspect registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi:verification2` | 返回运行用户 `185`、Java 21 runtime entrypoint、OCI version/revision labels 和 `/actuator/health` healthcheck。 |
+| 本地应用健康 | Java 21 `ProductionDeploymentConfigurationTest` | 通过 `/orchestapi/actuator/health` 回归测试；真实 Starbucks PostgreSQL/Ingress 流量仍待平台验证。 |
 
 ## 已知基线信号
 
@@ -38,3 +38,15 @@
 - 集群 rollout、监控接入和 `kubectl rollout undo` 回滚演练。
 
 部署前必须由 Starbucks 平台负责人将 `internal-example` 复制为环境自有 overlay，替换所有 `.invalid`、`192.0.2.0/32`、示例 namespace、镜像地址、Ingress controller selector 与 TLS Secret 占位值，并执行上述线上门禁。
+
+## 2026-08-31 构建路径跟进
+
+根据用户确认，构建职责已切换为本地/CI 构建：`deploy.sh` 先使用 `VITE_BASE_PATH=/orchestapi/` 构建前端，再调用 Java 21 Maven 的 `frontend-static` profile 将 `frontend/dist` 复制进 Spring Boot JAR；根 `Dockerfile` 不再包含 Node/Maven builder，只通过 `RUNTIME_IMAGE`（默认 Starbucks 内部 Java 基础镜像）封装该 JAR。`--jar-only` 可在完全不运行 Docker 的情况下只产出 `backend/target/orchestapi-1.0.0.jar`，`--push` 和 `--apply-k8s` 均保持显式 opt-in。
+
+本地 follow-up 证据：
+
+- `./test-script/verify-local-jar-deploy.sh` 通过；
+- `VITE_BASE_PATH=/orchestapi/ npm run build` 通过；
+- Java 21 `mvn clean package -Dfrontend.dist.dir=.../frontend/dist -DskipTests` 通过，JAR 含 `BOOT-INF/classes/static/index.html`；
+- `./deploy.sh test-local-jar --skip-install --jar-only` 通过；
+- runtime image 仍需使用已批准的 Starbucks registry 凭据进行真实构建/推送；本地未宣称内部仓库可达或集群已发布。
