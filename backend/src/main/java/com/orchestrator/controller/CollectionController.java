@@ -2,6 +2,8 @@ package com.orchestrator.controller;
 
 import com.orchestrator.dto.CollectionRequest;
 import com.orchestrator.dto.CollectionResponse;
+import com.orchestrator.dto.CollectionRunResponse;
+import com.orchestrator.dto.RunRequest;
 import com.orchestrator.service.CollectionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -43,5 +45,11 @@ public class CollectionController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         service.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/run")
+    public CollectionRunResponse run(@PathVariable UUID id,
+                                     @RequestBody(required = false) RunRequest request) {
+        return service.run(id, request);
     }
 }

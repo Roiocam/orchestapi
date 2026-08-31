@@ -22,12 +22,14 @@ import {
   SearchOutlined,
   WarningOutlined,
   CloseCircleFilled,
+  PlayCircleOutlined,
 } from '@ant-design/icons'
 import type { FilterDropdownProps } from 'antd/es/table/interface'
 import type { TestSuite, TestSuiteListParams } from '../types/testSuite'
 import type { PageResponse } from '../types/environment'
 import { testSuiteApi, exportSuite } from '../services/testSuiteApi'
 import { useProjectContext } from '../context/ProjectContext'
+import { useRunCollection } from '../components/RunCollectionModal'
 
 const COLUMN_LABELS: Record<string, string> = {
   name: 'Name',
@@ -134,6 +136,7 @@ export default function TestSuitesPage() {
   const [renameModalOpen, setRenameModalOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [pendingImport, setPendingImport] = useState<Record<string, unknown> | null>(null)
+  const { openRunCollection, modal: runCollectionModal, running: runningCollection } = useRunCollection()
 
   useEffect(() => {
     if (searchParams.get('import') === '1') {
@@ -395,6 +398,21 @@ export default function TestSuitesPage() {
           <Button icon={<ImportOutlined />} onClick={() => fileInputRef.current?.click()}>
             Import
           </Button>
+          {selectedCollection && (
+            <Button
+              icon={<PlayCircleOutlined />}
+              loading={runningCollection}
+              onClick={() =>
+                openRunCollection({
+                  id: selectedCollection.id,
+                  name: selectedCollection.name,
+                  suiteCount: selectedCollection.suiteCount ?? data.totalElements,
+                })
+              }
+            >
+              Run Collection
+            </Button>
+          )}
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -509,6 +527,8 @@ export default function TestSuitesPage() {
           }
         }}
       />
+
+      {runCollectionModal}
     </div>
   )
 }

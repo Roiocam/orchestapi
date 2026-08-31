@@ -4,6 +4,7 @@ import com.orchestrator.dto.CronPreviewResponse;
 import com.orchestrator.dto.PageResponse;
 import com.orchestrator.dto.RunScheduleRequest;
 import com.orchestrator.dto.RunScheduleResponse;
+import com.orchestrator.dto.SuiteBatchRunResult;
 import com.orchestrator.dto.SuiteExecutionResult;
 import com.orchestrator.exception.NotFoundException;
 import com.orchestrator.model.ApiCollection;
@@ -256,34 +257,72 @@ public class ScheduleService {
             return;
         }
 
-        // Same as suite steps: keep going after a failure so the batch finishes.
-        for (TestSuite suite : targets) {
-            UUID runId = null;
-            try {
-                TestRun run = runService.createRun(
-                        suite.getId(),
-                        schedule.getEnvironmentId(),
-                        TriggerType.SCHEDULED,
-                        scheduleId);
-                runId = run.getId();
-
-                ExecutionService.PreparedExecution prepared =
-                        executionService.prepareSuiteRun(suite.getId(), schedule.getEnvironmentId());
-                SuiteExecutionResult result = executionService.executePreparedNonInteractive(prepared);
-                runService.completeRun(runId, result);
-
-                log.info("Scheduled suite {} completed for schedule {}: {}",
-                        suite.getId(), scheduleId, result.getStatus());
-            } catch (Exception e) {
+        List<SuiteBatchRunResult> results = executeSuitesSequentially(
+                targets,
+                schedule.getEnvironmentId(),
+                TriggerType.SCHEDULED,
+                scheduleId);
+        for (SuiteBatchRunResult result : results) {
+            if ("FAILURE".equals(result.getStatus())) {
                 log.error("Scheduled suite {} failed for schedule {}: {}",
-                        suite.getId(), scheduleId, e.getMessage(), e);
-                if (runId != null) {
-                    runService.failRun(runId, e.getMessage());
-                }
+                        result.getSuiteId(), scheduleId, result.getErrorMessage());
+            } else {
+                log.info("Scheduled suite {} completed for schedule {}: {}",
+                        result.getSuiteId(), scheduleId, result.getStatus());
             }
         }
 
         touchScheduleTimestamps(schedule);
+    }
+
+    /**
+     * Run suites sequentially with the same semantics as scheduled collection/project runs.
+     * Continues after individual suite failures.
+     */
+    public List<SuiteBatchRunResult> executeSuitesSequentially(List<TestSuite> suites,
+                                                                UUID environmentId,
+                                                                TriggerType triggerType,
+                                                                UUID scheduleId) {
+        List<SuiteBatchRunResult> results = new ArrayList<>();
+        for (TestSuite suite : suites) {
+            UUID runId = null;
+            try {
+                ExecutionService.PreparedExecution prepared;
+                UUID envForRun;
+                if (environmentId != null) {
+                    envForRun = environmentId;
+                    TestRun run = runService.createRun(suite.getId(), envForRun, triggerType, scheduleId);
+                    runId = run.getId();
+                    prepared = executionService.prepareSuiteRun(suite.getId(), environmentId);
+                } else {
+                    prepared = executionService.prepareSuiteRun(suite.getId(), null);
+                    envForRun = prepared.env() != null ? prepared.env().getId() : null;
+                    TestRun run = runService.createRun(suite.getId(), envForRun, triggerType, scheduleId);
+                    runId = run.getId();
+                }
+
+                SuiteExecutionResult executionResult = executionService.executePreparedNonInteractive(prepared);
+                runService.completeRun(runId, executionResult);
+                results.add(SuiteBatchRunResult.builder()
+                        .suiteId(suite.getId())
+                        .suiteName(suite.getName())
+                        .runId(runId)
+                        .status(executionResult.getStatus())
+                        .build());
+            } catch (Exception e) {
+                if (runId != null) {
+                    runService.failRun(runId, e.getMessage());
+                }
+                results.add(SuiteBatchRunResult.builder()
+                        .suiteId(suite.getId())
+                        .suiteName(suite.getName())
+                        .runId(runId)
+                        .status("FAILURE")
+                        .errorMessage(e.getMessage())
+                        .build());
+            }
+        }
+        return results;
     }
 
     private void touchScheduleTimestamps(RunSchedule schedule) {

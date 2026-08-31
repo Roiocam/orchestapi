@@ -23,6 +23,7 @@ import { useProjectContext } from '../context/ProjectContext'
 import { collectionApi } from '../services/projectApi'
 import { testSuiteApi } from '../services/testSuiteApi'
 import type { TestSuite } from '../types/testSuite'
+import { useRunCollection } from './RunCollectionModal'
 
 type TreeKey = string
 
@@ -64,6 +65,7 @@ export default function SuiteExplorer() {
   const [collectionModalOpen, setCollectionModalOpen] = useState(false)
   const [savingCollection, setSavingCollection] = useState(false)
   const [collectionForm] = Form.useForm()
+  const { openRunCollection, modal: runCollectionModal, running: runningCollection } = useRunCollection()
 
   const activeSuiteId = useMemo(() => {
     const match = location.pathname.match(/^\/test-suites\/([^/]+)/)
@@ -210,12 +212,34 @@ export default function SuiteExplorer() {
     navigate('/test-suites/new')
   }
 
+  const suiteCountForCollection = (cid: string) => {
+    const collection = collections.find((c) => c.id === cid)
+    if (collection) return collection.suiteCount
+    return suites.filter((s) => s.collectionId === cid).length
+  }
+
+  const runCollection = (cid: string) => {
+    const collection = collections.find((c) => c.id === cid)
+    if (!collection) return
+    openRunCollection({
+      id: cid,
+      name: collection.name,
+      suiteCount: suiteCountForCollection(cid),
+    })
+  }
+
   const collectionMenu = (cid: string): MenuProps => ({
     items: [
       {
         key: 'new-suite',
         label: 'New Suite',
         onClick: () => newSuiteInCollection(cid),
+      },
+      {
+        key: 'run-collection',
+        label: 'Run Collection',
+        disabled: runningCollection,
+        onClick: () => runCollection(cid),
       },
     ],
   })
@@ -357,6 +381,8 @@ export default function SuiteExplorer() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {runCollectionModal}
     </div>
   )
 }

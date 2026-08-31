@@ -32,3 +32,21 @@ export interface CollectionRequest {
   name: string
   description: string
 }
+
+export interface CollectionSuiteRunResult {
+  suiteId: string
+  suiteName: string
+  runId: string | null
+  status: string
+  errorMessage: string | null
+}
+
+export interface CollectionRunResponse {
+  collectionId: string
+  collectionName: string
+  environmentId: string | null
+  totalSuites: number
+  succeeded: number
+  failed: number
+  results: CollectionSuiteRunResult[]
+}

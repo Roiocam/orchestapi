@@ -2,6 +2,7 @@ import axios from 'axios'
 import type {
   ApiCollection,
   CollectionRequest,
+  CollectionRunResponse,
   Project,
   ProjectRequest,
 } from '../types/project'
@@ -41,4 +42,12 @@ export const collectionApi = {
     axios.put<ApiCollection>(`${COLLECTIONS_BASE}/${id}`, data).then((r) => r.data),
 
   delete: (id: string) => axios.delete(`${COLLECTIONS_BASE}/${id}`),
+
+  run: (id: string, environmentId?: string) =>
+    axios
+      .post<CollectionRunResponse>(
+        `${COLLECTIONS_BASE}/${id}/run`,
+        environmentId ? { environmentId } : {},
+      )
+      .then((r) => r.data),
 }
