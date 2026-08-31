@@ -6,6 +6,7 @@ import com.orchestrator.dto.*;
 import com.orchestrator.exception.NotFoundException;
 import com.orchestrator.model.*;
 import com.orchestrator.model.enums.BodyType;
+import com.orchestrator.model.enums.OAuthMode;
 import com.orchestrator.repository.TestStepRepository;
 import com.orchestrator.repository.TestSuiteRepository;
 import lombok.RequiredArgsConstructor;
@@ -82,6 +83,7 @@ public class TestStepService {
                 .cacheTtlSeconds(request.getCacheTtlSeconds())
                 .dependencyOnly(request.isDependencyOnly())
                 .disabledDefaultHeaders(toJson(request.getDisabledDefaultHeaders()))
+                .oauthMode(request.getOauthMode() != null ? request.getOauthMode() : OAuthMode.INHERIT)
                 .groupName(request.getGroupName())
                 .sortOrder(maxSortOrder + 1)
                 .build();
@@ -122,6 +124,7 @@ public class TestStepService {
         step.setCacheTtlSeconds(request.getCacheTtlSeconds());
         step.setDependencyOnly(request.isDependencyOnly());
         step.setDisabledDefaultHeaders(toJson(request.getDisabledDefaultHeaders()));
+        step.setOauthMode(request.getOauthMode() != null ? request.getOauthMode() : OAuthMode.INHERIT);
         step.setGroupName(request.getGroupName());
 
         // Validate dependencies

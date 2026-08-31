@@ -8,6 +8,7 @@ import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.SQLRestriction;
 
 import com.orchestrator.model.enums.BodyType;
+import com.orchestrator.model.enums.OAuthMode;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
@@ -85,6 +86,11 @@ public class TestStep {
     @JdbcTypeCode(SqlTypes.JSON)
     @Builder.Default
     private String disabledDefaultHeaders = "[]";
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "oauth_mode", nullable = false, length = 16)
+    @Builder.Default
+    private OAuthMode oauthMode = OAuthMode.INHERIT;
 
     @Column(name = "sort_order", nullable = false)
     @Builder.Default

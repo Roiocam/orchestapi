@@ -3,6 +3,7 @@ package com.orchestrator.dto;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
 import com.orchestrator.model.HttpMethod;
+import com.orchestrator.model.enums.OAuthMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -88,6 +89,10 @@ public class TestStepRequest {
     @JsonSetter(nulls = Nulls.AS_EMPTY)
     @Builder.Default
     private List<String> disabledDefaultHeaders = new ArrayList<>();
+
+    @JsonSetter(nulls = Nulls.SKIP)
+    @Builder.Default
+    private OAuthMode oauthMode = OAuthMode.INHERIT;
 
     @Size(max = 100, message = "Group name must not exceed 100 characters")
     private String groupName;

@@ -6,6 +6,7 @@ import com.orchestrator.model.HttpMethod;
 import com.orchestrator.model.enums.ExpectedDataType;
 import com.orchestrator.model.enums.AssertionOperator;
 import com.orchestrator.model.enums.ResponseValidationType;
+import com.orchestrator.model.enums.OAuthMode;
 import com.orchestrator.model.ExtractionSource;
 import com.orchestrator.model.ResponseAction;
 import jakarta.validation.Valid;
@@ -63,6 +64,9 @@ public class TestSuiteImportRequest {
 
         @JsonSetter(nulls = Nulls.AS_EMPTY)
         private List<String> disabledDefaultHeaders = new ArrayList<>();
+
+        @JsonSetter(nulls = Nulls.SKIP)
+        private OAuthMode oauthMode = OAuthMode.INHERIT;
 
         @JsonSetter(nulls = Nulls.AS_EMPTY)
         private List<ImportDependencyDto> dependencies = new ArrayList<>();

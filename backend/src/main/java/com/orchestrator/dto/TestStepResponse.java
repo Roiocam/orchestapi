@@ -3,6 +3,7 @@ package com.orchestrator.dto;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orchestrator.model.*;
+import com.orchestrator.model.enums.OAuthMode;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -34,6 +35,7 @@ public class TestStepResponse {
     private int cacheTtlSeconds;
     private boolean dependencyOnly;
     private List<String> disabledDefaultHeaders;
+    private String oauthMode;
     private int sortOrder;
     private String groupName;
     private List<StepDependencyDto> dependencies;
@@ -60,6 +62,7 @@ public class TestStepResponse {
                 .cacheTtlSeconds(step.getCacheTtlSeconds())
                 .dependencyOnly(step.isDependencyOnly())
                 .disabledDefaultHeaders(parseStringList(step.getDisabledDefaultHeaders()))
+                .oauthMode(step.getOauthMode() != null ? step.getOauthMode().name() : OAuthMode.INHERIT.name())
                 .sortOrder(step.getSortOrder())
                 .groupName(step.getGroupName())
                 .dependencies(mapDependencies(step))

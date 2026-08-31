@@ -201,6 +201,9 @@ public class TestSuiteService {
         req.setCacheTtlSeconds(importStep.getCacheTtlSeconds());
         req.setDependencyOnly(importStep.isDependencyOnly());
         req.setDisabledDefaultHeaders(importStep.getDisabledDefaultHeaders() != null ? importStep.getDisabledDefaultHeaders() : new ArrayList<>());
+        req.setOauthMode(importStep.getOauthMode() != null
+                ? importStep.getOauthMode()
+                : com.orchestrator.model.enums.OAuthMode.INHERIT);
         req.setGroupName(importStep.getGroupName());
         req.setExtractVariables(importStep.getExtractVariables() != null ? importStep.getExtractVariables() : new ArrayList<>());
         req.setVerifications(importStep.getVerifications() != null ? importStep.getVerifications() : new ArrayList<>());
