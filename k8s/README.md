@@ -23,6 +23,29 @@ CONTEXT_PATH=/orchestapi
 JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
 ```
 
+OAuth Service Account 配置也通过 Deployment 环境变量传入。示例 base 默认关闭
+OAuth，且只保留外部 Secret 引用；平台管理的 overlay 在上线前必须把
+`ORCHESTAPI_OAUTH_ENABLED` 改为 `true`，填写批准的 Token Endpoint、Client ID、
+scope/audience 等非敏感值，并要求外部 Secret `orchestapi-oauth` 存在且包含
+`client-secret` key：
+
+```text
+ORCHESTAPI_OAUTH_ENABLED=false
+ORCHESTAPI_OAUTH_TOKEN_ENDPOINT=
+ORCHESTAPI_OAUTH_CLIENT_ID=
+ORCHESTAPI_OAUTH_CLIENT_SECRET=<来自外部 Secret orchestapi-oauth/client-secret>
+ORCHESTAPI_OAUTH_SCOPES=
+ORCHESTAPI_OAUTH_AUDIENCE=
+ORCHESTAPI_OAUTH_CLIENT_AUTH_METHOD=client_secret_basic
+ORCHESTAPI_OAUTH_REFRESH_SKEW_SECONDS=60
+ORCHESTAPI_OAUTH_REQUEST_TIMEOUT_MS=10000
+```
+
+这是出站服务调用能力，不会创建 IdP/Keycloak Client 或修改应用入站认证。
+OAuth Client 由 Starbucks/IdP 预先创建，Pod 使用 `client_credentials` 获取并在
+进程内缓存短期 Bearer Token。平台还需允许 Pod 到 Token Endpoint 的 DNS、TLS
+和 egress；Token Endpoint 不应通过浏览器访问。
+
 数据库环境变量仍从外部 Secret `orchestapi-db` 读取：`DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。仓库不会创建或保存 Secret。
 
 ## Starbucks 平台需要另外提供
@@ -78,6 +101,18 @@ kubectl -n "$DEPLOY_NAMESPACE" create secret generic orchestapi-db \
 ```
 
 `SECRET_ENV_FILE` 仅包含 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。首次启动会执行 Flyway migration，数据库账号需要具备相应 schema/table DDL 权限。
+
+创建外部 OAuth Secret（文件不要提交 Git；Secret 名称和 key 必须与 Deployment
+引用一致）：
+
+```bash
+kubectl -n "$DEPLOY_NAMESPACE" create secret generic orchestapi-oauth \
+  --from-literal=client-secret="$OAUTH_CLIENT_SECRET" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+开启 OAuth 前先确认该 Secret 已存在，并在平台 overlay 中填入非敏感配置。仓库
+不会创建或保存 OAuth Secret，也不会在清单中写入 Client Secret 或 Access Token。
 
 ## 渲染、发布与回滚
 

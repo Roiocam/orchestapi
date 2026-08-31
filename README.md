@@ -950,6 +950,18 @@ The checked-in `k8s/overlays/internal-example` is deliberately non-deployable
 and contains `.invalid` host/TLS/CIDR placeholders. Replace it with values
 approved by the Starbucks platform owner before applying.
 
+#### Deployment OAuth Service Account
+
+如目标服务要求 OAuth，优先使用 Deployment 级 Starbucks Service Account：平台/IdP
+预先创建 OAuth Client，应用以 `client_credentials` 自动获取并缓存短期 Bearer
+Token。只在平台管理的 overlay 中填写 Token Endpoint、Client ID、scope/audience
+等非敏感配置，并将 Client Secret 通过外部 Secret `orchestapi-oauth` 的
+`client-secret` key 引用；仓库不创建 IdP Client，也不提交 Secret 或 Token。Pod
+必须具备到 Token Endpoint 的 DNS、TLS 和受控 egress。
+
+该能力不改变入站应用认证。Step 显式 `Authorization` 和现有手工依赖 Token 仍受
+支持；浏览器、执行结果、curl 预览和 SSE 不会接触目标 API Token。
+
 ### Docker Compose
 
 ```bash
@@ -1048,6 +1060,24 @@ For local development, both default to `/` — no configuration needed.
 | `SERVER_PORT` | `8080` | Backend server port |
 | `CONTEXT_PATH` | `/` | Servlet context path (e.g., `/app/orchestapi`) |
 | `VITE_BASE_PATH` | `/` | Frontend base path (Docker build arg, must match `CONTEXT_PATH`) |
+
+### Outbound OAuth Service Account Environment Variables
+
+这些变量只控制应用访问目标服务时的出站 OAuth。首版默认关闭；启用时，
+`ORCHESTAPI_OAUTH_CLIENT_SECRET` 必须来自外部 Kubernetes Secret，不要写入
+Deployment 的明文 `value`、ConfigMap、Git 或前端配置。
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ORCHESTAPI_OAUTH_ENABLED` | `false` | Enable automatic `client_credentials` token injection |
+| `ORCHESTAPI_OAUTH_TOKEN_ENDPOINT` | empty | Approved IdP Token Endpoint URL |
+| `ORCHESTAPI_OAUTH_CLIENT_ID` | empty | Pre-provisioned Starbucks Service Account client ID |
+| `ORCHESTAPI_OAUTH_CLIENT_SECRET` | external Secret | Secret `orchestapi-oauth/client-secret`; never expose in source or UI |
+| `ORCHESTAPI_OAUTH_SCOPES` | empty | Optional space-delimited OAuth scopes |
+| `ORCHESTAPI_OAUTH_AUDIENCE` | empty | Optional target audience |
+| `ORCHESTAPI_OAUTH_CLIENT_AUTH_METHOD` | `client_secret_basic` | `client_secret_basic` or `client_secret_post` |
+| `ORCHESTAPI_OAUTH_REFRESH_SKEW_SECONDS` | `60` | Refresh before expiry |
+| `ORCHESTAPI_OAUTH_REQUEST_TIMEOUT_MS` | `10000` | Token request timeout |
 
 ### Limits
 
