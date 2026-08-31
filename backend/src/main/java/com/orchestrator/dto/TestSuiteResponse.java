@@ -14,6 +14,7 @@ import java.util.UUID;
 public class TestSuiteResponse {
 
     private UUID id;
+    private UUID collectionId;
     private String name;
     private String description;
     private UUID defaultEnvironmentId;
@@ -24,6 +25,7 @@ public class TestSuiteResponse {
     public static TestSuiteResponse from(TestSuite suite) {
         return TestSuiteResponse.builder()
                 .id(suite.getId())
+                .collectionId(suite.getCollectionId())
                 .name(suite.getName())
                 .description(suite.getDescription())
                 .defaultEnvironmentId(suite.getDefaultEnvironmentId())

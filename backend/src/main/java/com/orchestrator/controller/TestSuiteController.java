@@ -31,6 +31,8 @@ public class TestSuiteController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String name,
+            @RequestParam(required = false) UUID projectId,
+            @RequestParam(required = false) UUID collectionId,
             @RequestParam(defaultValue = "name") String sortBy,
             @RequestParam(defaultValue = "asc") String sortDir) {
         if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
@@ -43,7 +45,7 @@ public class TestSuiteController {
         Sort sort = sortDir.equalsIgnoreCase("desc")
                 ? Sort.by(sortBy).descending()
                 : Sort.by(sortBy).ascending();
-        return service.findAllPaged(name, PageRequest.of(page, size, sort));
+        return service.findAllPaged(name, projectId, collectionId, PageRequest.of(page, size, sort));
     }
 
     @PostMapping("/import")

@@ -10,6 +10,8 @@ import {
   Tooltip,
   Modal,
   Input,
+  Tabs,
+  Form,
 } from 'antd'
 import type { InputRef } from 'antd'
 import {
@@ -21,11 +23,14 @@ import {
   SearchOutlined,
   WarningOutlined,
   CloseCircleFilled,
+  FolderAddOutlined,
 } from '@ant-design/icons'
 import type { FilterDropdownProps } from 'antd/es/table/interface'
 import type { TestSuite, TestSuiteListParams } from '../types/testSuite'
 import type { PageResponse } from '../types/environment'
 import { testSuiteApi, exportSuite } from '../services/testSuiteApi'
+import { collectionApi } from '../services/projectApi'
+import { useProjectContext } from '../context/ProjectContext'
 
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -103,6 +108,15 @@ function ColumnSearch({
 export default function TestSuitesPage() {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const {
+    projectId,
+    collectionId,
+    collections,
+    setCollectionId,
+    effectiveCollectionId,
+    refreshCollections,
+  } = useProjectContext()
+  const [collectionForm] = Form.useForm()
 
   const [data, setData] = useState<PageResponse<TestSuite>>({
     content: [],
@@ -118,10 +132,22 @@ export default function TestSuitesPage() {
   const [sortBy, setSortBy] = useState('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [collectionModalOpen, setCollectionModalOpen] = useState(false)
+  const [savingCollection, setSavingCollection] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
+      if (!projectId) {
+        setData({
+          content: [],
+          page: 0,
+          size: pageSize,
+          totalElements: 0,
+          totalPages: 0,
+        })
+        return
+      }
       setLoading(true)
       try {
         const params: TestSuiteListParams = {
@@ -129,7 +155,9 @@ export default function TestSuitesPage() {
           size: pageSize,
           sortBy,
           sortDir,
+          projectId,
         }
+        if (collectionId) params.collectionId = collectionId
         if (appliedFilters.name) params.name = appliedFilters.name
 
         const result = await testSuiteApi.list(params)
@@ -142,7 +170,39 @@ export default function TestSuitesPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [currentPage, pageSize, sortBy, sortDir, appliedFilters, refreshKey])
+  }, [currentPage, pageSize, sortBy, sortDir, appliedFilters, refreshKey, projectId, collectionId])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [projectId, collectionId])
+
+  const handleCreateCollection = async () => {
+    if (!projectId) return
+    try {
+      const values = await collectionForm.validateFields()
+      setSavingCollection(true)
+      const created = await collectionApi.create({
+        projectId,
+        name: values.name,
+        description: values.description ?? '',
+      })
+      message.success('Collection created')
+      setCollectionModalOpen(false)
+      collectionForm.resetFields()
+      await refreshCollections()
+      setCollectionId(created.id)
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'errorFields' in err) return
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { error?: string } } }
+        message.error(axiosErr.response?.data?.error ?? 'Failed to create collection')
+      } else {
+        message.error('Failed to create collection')
+      }
+    } finally {
+      setSavingCollection(false)
+    }
+  }
 
   const handleDelete = async (id: string) => {
     try {
@@ -180,10 +240,15 @@ export default function TestSuitesPage() {
 
   const doImport = async (importData: Record<string, unknown>) => {
     try {
-      await testSuiteApi.importSuite(importData)
+      const payload = {
+        ...importData,
+        collectionId: effectiveCollectionId ?? undefined,
+      }
+      await testSuiteApi.importSuite(payload)
       message.success(`Test suite "${importData.name}" imported`)
       setPendingImport(null)
       setRefreshKey((k) => k + 1)
+      await refreshCollections()
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
@@ -331,22 +396,55 @@ export default function TestSuitesPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Space>
-          <Button
-            icon={<ImportOutlined />}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Import
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/test-suites/new')}
-          >
-            New Suite
-          </Button>
-        </Space>
+      <div style={{ marginBottom: 12 }}>
+        <Tabs
+          size="small"
+          activeKey={collectionId ?? 'all'}
+          onChange={(key) => setCollectionId(key === 'all' ? null : key)}
+          tabBarExtraContent={
+            <Space>
+              <Button
+                size="small"
+                icon={<FolderAddOutlined />}
+                onClick={() => {
+                  collectionForm.resetFields()
+                  setCollectionModalOpen(true)
+                }}
+                disabled={!projectId}
+              >
+                New Collection
+              </Button>
+              <Button
+                icon={<ImportOutlined />}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Import
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => navigate('/test-suites/new')}
+              >
+                New Suite
+              </Button>
+            </Space>
+          }
+          items={[
+            {
+              key: 'all',
+              label: 'All',
+            },
+            ...collections.map((c) => ({
+              key: c.id,
+              label: (
+                <span>
+                  {c.name}
+                  <Tag style={{ marginLeft: 6 }}>{c.suiteCount}</Tag>
+                </span>
+              ),
+            })),
+          ]}
+        />
       </div>
 
       <input
@@ -357,6 +455,29 @@ export default function TestSuitesPage() {
         onChange={handleImport}
         aria-label="Import test suite JSON file"
       />
+
+      <Modal
+        title="New Collection"
+        open={collectionModalOpen}
+        onOk={handleCreateCollection}
+        onCancel={() => setCollectionModalOpen(false)}
+        confirmLoading={savingCollection}
+        okText="Create"
+        destroyOnClose
+      >
+        <Form form={collectionForm} layout="vertical" style={{ marginTop: 12 }}>
+          <Form.Item
+            name="name"
+            label="Name"
+            rules={[{ required: true, message: 'Name is required' }]}
+          >
+            <Input maxLength={200} placeholder="e.g. Skills" />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea rows={2} maxLength={2000} placeholder="Optional" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title={
@@ -441,7 +562,6 @@ export default function TestSuitesPage() {
               setSortBy(sorter.field as string)
               setSortDir(sorter.order === 'descend' ? 'desc' : 'asc')
             } else {
-              // Sort cleared — reset to default
               setSortBy('name')
               setSortDir('asc')
             }

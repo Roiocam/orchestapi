@@ -18,7 +18,9 @@ public interface TestSuiteRepository extends JpaRepository<TestSuite, UUID>, Jpa
     @Query("SELECT DISTINCT s FROM TestSuite s LEFT JOIN FETCH s.steps st WHERE s.id IN :ids ORDER BY st.sortOrder")
     List<TestSuite> findByIdsWithSteps(@Param("ids") List<UUID> ids);
 
-    boolean existsByName(String name);
+    boolean existsByNameAndCollectionId(String name, UUID collectionId);
 
-    boolean existsByNameAndIdNot(String name, UUID id);
+    boolean existsByNameAndCollectionIdAndIdNot(String name, UUID collectionId, UUID id);
+
+    long countByCollectionId(UUID collectionId);
 }

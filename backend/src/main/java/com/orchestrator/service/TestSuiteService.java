@@ -2,7 +2,9 @@ package com.orchestrator.service;
 
 import com.orchestrator.dto.*;
 import com.orchestrator.exception.NotFoundException;
+import com.orchestrator.model.DefaultHierarchyIds;
 import com.orchestrator.model.TestSuite;
+import com.orchestrator.repository.ApiCollectionRepository;
 import com.orchestrator.repository.TestSuiteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -23,17 +25,30 @@ public class TestSuiteService {
 
     private final TestSuiteRepository repository;
     private final TestStepService stepService;
+    private final ApiCollectionRepository collectionRepository;
 
     @Transactional(readOnly = true)
-    public PageResponse<TestSuiteResponse> findAllPaged(String name, Pageable pageable) {
+    public PageResponse<TestSuiteResponse> findAllPaged(
+            String name, UUID projectId, UUID collectionId, Pageable pageable) {
         Specification<TestSuite> spec = Specification.where(null);
 
         if (name != null && !name.isBlank()) {
             spec = spec.and((root, query, cb) ->
                     cb.like(cb.lower(root.get("name")), "%" + name.toLowerCase() + "%"));
         }
+        if (collectionId != null) {
+            spec = spec.and((root, query, cb) ->
+                    cb.equal(root.get("collectionId"), collectionId));
+        } else if (projectId != null) {
+            List<UUID> collectionIds = collectionRepository.findByProjectIdOrderByNameAsc(projectId).stream()
+                    .map(c -> c.getId())
+                    .toList();
+            if (collectionIds.isEmpty()) {
+                return PageResponse.from(Page.empty(pageable), TestSuiteResponse::from);
+            }
+            spec = spec.and((root, query, cb) -> root.get("collectionId").in(collectionIds));
+        }
 
-        // Step 1: paginated query for IDs only
         Page<TestSuite> idPage = repository.findAll(spec, pageable);
         List<UUID> ids = idPage.getContent().stream().map(TestSuite::getId).toList();
 
@@ -41,10 +56,8 @@ public class TestSuiteService {
             return PageResponse.from(idPage, TestSuiteResponse::from);
         }
 
-        // Step 2: fetch full details for current page IDs
         List<TestSuite> withSteps = repository.findByIdsWithSteps(ids);
 
-        // Preserve page order
         Map<UUID, TestSuite> byId = withSteps.stream()
                 .collect(Collectors.toMap(TestSuite::getId, Function.identity()));
         List<TestSuite> ordered = ids.stream().map(byId::get).toList();
@@ -62,13 +75,15 @@ public class TestSuiteService {
 
     @Transactional
     public TestSuiteResponse create(TestSuiteRequest request) {
-        if (repository.existsByName(request.getName())) {
+        UUID collectionId = resolveCollectionId(request.getCollectionId());
+        if (repository.existsByNameAndCollectionId(request.getName(), collectionId)) {
             throw new IllegalArgumentException("Test suite with name '" + request.getName() + "' already exists");
         }
 
         TestSuite suite = TestSuite.builder()
                 .name(request.getName())
                 .description(request.getDescription() != null ? request.getDescription() : "")
+                .collectionId(collectionId)
                 .defaultEnvironmentId(request.getDefaultEnvironmentId())
                 .build();
 
@@ -80,12 +95,17 @@ public class TestSuiteService {
         TestSuite suite = repository.findByIdWithSteps(id)
                 .orElseThrow(() -> new NotFoundException("Test suite not found: " + id));
 
-        if (repository.existsByNameAndIdNot(request.getName(), id)) {
+        UUID collectionId = request.getCollectionId() != null
+                ? resolveCollectionId(request.getCollectionId())
+                : suite.getCollectionId();
+
+        if (repository.existsByNameAndCollectionIdAndIdNot(request.getName(), collectionId, id)) {
             throw new IllegalArgumentException("Test suite with name '" + request.getName() + "' already exists");
         }
 
         suite.setName(request.getName());
         suite.setDescription(request.getDescription() != null ? request.getDescription() : "");
+        suite.setCollectionId(collectionId);
         suite.setDefaultEnvironmentId(request.getDefaultEnvironmentId());
 
         return TestSuiteResponse.from(repository.save(suite));
@@ -101,14 +121,15 @@ public class TestSuiteService {
 
     @Transactional
     public TestSuiteResponse importSuite(TestSuiteImportRequest request) {
-        if (repository.existsByName(request.getName())) {
+        UUID collectionId = resolveCollectionId(request.getCollectionId());
+        if (repository.existsByNameAndCollectionId(request.getName(), collectionId)) {
             throw new IllegalArgumentException("Test suite with name '" + request.getName() + "' already exists");
         }
 
-        // Create suite
         TestSuite suite = TestSuite.builder()
                 .name(request.getName())
                 .description(request.getDescription() != null ? request.getDescription() : "")
+                .collectionId(collectionId)
                 .build();
         suite = repository.save(suite);
         UUID suiteId = suite.getId();
@@ -117,7 +138,6 @@ public class TestSuiteService {
             return TestSuiteResponse.from(suite);
         }
 
-        // Pass 1: Create all steps WITHOUT dependencies and handlers (need IDs first)
         Map<String, UUID> stepNameToId = new LinkedHashMap<>();
         for (TestSuiteImportRequest.ImportStepDto importStep : request.getSteps()) {
             TestStepRequest stepReq = buildStepRequest(importStep, false);
@@ -125,7 +145,6 @@ public class TestSuiteService {
             stepNameToId.put(created.getName(), created.getId());
         }
 
-        // Pass 2: Update steps that have dependencies or handlers with sideEffectStepName
         for (TestSuiteImportRequest.ImportStepDto importStep : request.getSteps()) {
             boolean hasDeps = importStep.getDependencies() != null && !importStep.getDependencies().isEmpty();
             boolean hasHandlersWithSideEffect = importStep.getResponseHandlers() != null &&
@@ -136,7 +155,6 @@ public class TestSuiteService {
                 UUID stepId = stepNameToId.get(importStep.getName());
                 TestStepRequest updateReq = buildStepRequest(importStep, true);
 
-                // Resolve dependency names to IDs
                 if (hasDeps) {
                     List<StepDependencyDto> resolvedDeps = new ArrayList<>();
                     for (TestSuiteImportRequest.ImportDependencyDto dep : importStep.getDependencies()) {
@@ -154,7 +172,6 @@ public class TestSuiteService {
                     updateReq.setDependencies(resolvedDeps);
                 }
 
-                // Resolve handler sideEffectStepName to ID
                 if (importStep.getResponseHandlers() != null) {
                     List<StepResponseHandlerDto> resolvedHandlers = new ArrayList<>();
                     for (TestSuiteImportRequest.ImportHandlerDto h : importStep.getResponseHandlers()) {
@@ -182,9 +199,16 @@ public class TestSuiteService {
             }
         }
 
-        // Re-fetch to get accurate step count
         return TestSuiteResponse.from(repository.findByIdWithSteps(suiteId)
                 .orElseThrow(() -> new NotFoundException("Test suite not found: " + suiteId)));
+    }
+
+    private UUID resolveCollectionId(UUID collectionId) {
+        UUID resolved = collectionId != null ? collectionId : DefaultHierarchyIds.DEFAULT_COLLECTION_ID;
+        if (!collectionRepository.existsById(resolved)) {
+            throw new NotFoundException("Collection not found: " + resolved);
+        }
+        return resolved;
     }
 
     private TestStepRequest buildStepRequest(TestSuiteImportRequest.ImportStepDto importStep, boolean includeHandlers) {
@@ -209,12 +233,9 @@ public class TestSuiteService {
         req.setVerifications(importStep.getVerifications() != null ? importStep.getVerifications() : new ArrayList<>());
         req.setResponseValidations(importStep.getResponseValidations() != null ? importStep.getResponseValidations() : new ArrayList<>());
 
-        // Dependencies and handlers with name-references are empty in pass 1
         req.setDependencies(new ArrayList<>());
 
         if (includeHandlers) {
-            // Will be overridden by caller for steps that need side-effect resolution
-            // For steps without side effects, convert handlers directly
             if (importStep.getResponseHandlers() != null) {
                 List<StepResponseHandlerDto> handlers = new ArrayList<>();
                 for (TestSuiteImportRequest.ImportHandlerDto h : importStep.getResponseHandlers()) {
@@ -229,7 +250,6 @@ public class TestSuiteService {
                 req.setResponseHandlers(handlers);
             }
         } else {
-            // Pass 1: include handlers without side effects directly
             if (importStep.getResponseHandlers() != null) {
                 boolean anySideEffect = importStep.getResponseHandlers().stream()
                         .anyMatch(h -> h.getSideEffectStepName() != null && !h.getSideEffectStepName().isBlank());

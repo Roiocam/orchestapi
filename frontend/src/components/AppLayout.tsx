@@ -1,17 +1,20 @@
-import { Layout, theme } from 'antd'
+import { Layout, Select, theme, Button, Space } from 'antd'
 import {
   ExperimentOutlined,
   SettingOutlined,
   PlayCircleOutlined,
   CloudServerOutlined,
   NodeIndexOutlined,
+  ProjectOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
+import { useProjectContext } from '../context/ProjectContext'
 
 const { Sider, Content, Header } = Layout
 
 const navItems = [
   { key: '/', icon: <ExperimentOutlined />, label: 'Suites' },
+  { key: '/projects', icon: <ProjectOutlined />, label: 'Projects' },
   { key: '/environments', icon: <SettingOutlined />, label: 'Envs' },
   { key: '/runs', icon: <PlayCircleOutlined />, label: 'Runs' },
   { key: '/mock-server', icon: <CloudServerOutlined />, label: 'Mock' },
@@ -21,6 +24,7 @@ const navItems = [
 const pageLabelMap: Record<string, string> = {
   '/': 'Test Suites',
   '/test-suites': 'Test Suites',
+  '/projects': 'Projects',
   '/environments': 'Environments',
   '/runs': 'Runs',
   '/mock-server': 'Mock Server',
@@ -31,12 +35,12 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { token } = theme.useToken()
+  const { projects, projectId, setProjectId, loading } = useProjectContext()
 
   const matchedKey = Object.keys(pageLabelMap)
     .filter((k) => location.pathname.startsWith(k) && k !== '/')
     .sort((a, b) => b.length - a.length)[0] ?? '/'
 
-  // /test-suites paths should highlight the Suites nav item at /
   const selectedKey = matchedKey === '/test-suites' ? '/' : matchedKey
   const pageLabel = pageLabelMap[matchedKey] ?? 'Test Suites'
 
@@ -60,7 +64,6 @@ export default function AppLayout() {
         theme="light"
         trigger={null}
       >
-        {/* Logo */}
         <div
           style={{
             height: 40,
@@ -74,7 +77,6 @@ export default function AppLayout() {
           <img src="/icon.svg" alt="OrchestAPI" style={{ width: 24, height: 24 }} />
         </div>
 
-        {/* Navigation — icon + label stacked */}
         <nav style={{ display: 'flex', flexDirection: 'column', padding: '8px 0' }}>
           {navItems.map((item) => {
             const isActive = item.key === selectedKey
@@ -86,7 +88,12 @@ export default function AppLayout() {
                 aria-label={pageLabelMap[item.key] || item.label}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => navigate(item.key)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(item.key) } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    navigate(item.key)
+                  }
+                }}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -100,17 +107,25 @@ export default function AppLayout() {
                   color: isActive ? '#0891b2' : '#64748b',
                   transition: 'background 150ms ease, color 150ms ease',
                 }}
-                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#f1f5f9' }}
-                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
+                onMouseEnter={(e) => {
+                  if (!isActive) e.currentTarget.style.background = '#f1f5f9'
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) e.currentTarget.style.background = 'transparent'
+                }}
               >
                 <span style={{ fontSize: 18, lineHeight: 1, display: 'flex' }}>{item.icon}</span>
-                <span style={{
-                  fontSize: 10,
-                  fontWeight: isActive ? 600 : 500,
-                  fontFamily: 'var(--font-body)',
-                  letterSpacing: 0.2,
-                  lineHeight: 1.2,
-                }}>{item.label}</span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: isActive ? 600 : 500,
+                    fontFamily: 'var(--font-body)',
+                    letterSpacing: 0.2,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {item.label}
+                </span>
               </div>
             )
           })}
@@ -125,8 +140,10 @@ export default function AppLayout() {
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             height: 40,
             lineHeight: '40px',
+            gap: 12,
           }}
         >
           <span
@@ -140,11 +157,26 @@ export default function AppLayout() {
           >
             {pageLabel}
           </span>
+          <Space size={8}>
+            <Select
+              size="small"
+              style={{ minWidth: 180 }}
+              loading={loading}
+              value={projectId ?? undefined}
+              placeholder="Select project"
+              options={projects.map((p) => ({
+                value: p.id,
+                label: p.name,
+              }))}
+              onChange={(value) => setProjectId(value)}
+              aria-label="Current project"
+            />
+            <Button size="small" type="link" onClick={() => navigate('/projects')}>
+              Manage
+            </Button>
+          </Space>
         </Header>
-        <Content
-          id="main-content"
-          style={{ margin: 16, background: token.colorBgLayout }}
-        >
+        <Content id="main-content" style={{ margin: 16, background: token.colorBgLayout }}>
           <Outlet />
         </Content>
       </Layout>

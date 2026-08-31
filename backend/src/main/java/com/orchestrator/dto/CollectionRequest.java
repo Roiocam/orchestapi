@@ -1,6 +1,7 @@
 package com.orchestrator.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
@@ -11,7 +12,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class TestSuiteRequest {
+public class CollectionRequest {
+
+    @NotNull(message = "Project ID is required")
+    private UUID projectId;
 
     @NotBlank(message = "Name is required")
     @Size(max = 200, message = "Name must not exceed 200 characters")
@@ -20,9 +24,4 @@ public class TestSuiteRequest {
     @Size(max = 2000, message = "Description must not exceed 2000 characters")
     @Builder.Default
     private String description = "";
-
-    /** Required for new suites; omitted updates leave collection unchanged. */
-    private UUID collectionId;
-
-    private UUID defaultEnvironmentId;
 }

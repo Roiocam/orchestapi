@@ -43,6 +43,7 @@ import RunResultsPanel from '../components/RunResultsPanel'
 import ImportStepModal from '../components/ImportStepModal'
 import ManualInputModal from '../components/ManualInputModal'
 import DagView from '../components/DagView'
+import { useProjectContext } from '../context/ProjectContext'
 
 const { Title } = Typography
 
@@ -80,6 +81,7 @@ export default function TestSuiteDetailPage() {
   const navigate = useNavigate()
   const [form] = Form.useForm()
   const isNew = id === 'new'
+  const { collections, effectiveCollectionId, projectId } = useProjectContext()
 
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -158,6 +160,7 @@ export default function TestSuiteDetailPage() {
         form.setFieldsValue({
           name: suite.name,
           description: suite.description,
+          collectionId: suite.collectionId,
           defaultEnvironmentId: suite.defaultEnvironmentId ?? undefined,
         })
         setSuiteName(suite.name)
@@ -203,6 +206,7 @@ export default function TestSuiteDetailPage() {
       const request = {
         name: values.name,
         description: values.description ?? '',
+        collectionId: values.collectionId ?? effectiveCollectionId ?? null,
         defaultEnvironmentId: values.defaultEnvironmentId ?? null,
       }
 
@@ -569,6 +573,19 @@ export default function TestSuiteDetailPage() {
             </Form.Item>
             <Form.Item name="description" label="Description" style={{ marginBottom: 12 }}>
               <Input.TextArea rows={2} placeholder="Optional description" autoSize={{ minRows: 1, maxRows: 3 }} />
+            </Form.Item>
+            <Form.Item
+              name="collectionId"
+              label="Collection"
+              rules={[{ required: true, message: 'Collection is required' }]}
+              initialValue={effectiveCollectionId ?? undefined}
+              style={{ marginBottom: 12 }}
+            >
+              <Select
+                placeholder={projectId ? 'Select collection' : 'Select a project first'}
+                options={collections.map((c) => ({ value: c.id, label: c.name }))}
+                disabled={!projectId || collections.length === 0}
+              />
             </Form.Item>
             <Form.Item name="defaultEnvironmentId" label="Default Environment" style={{ marginBottom: 0 }}>
               <Select

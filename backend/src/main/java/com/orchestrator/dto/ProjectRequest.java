@@ -4,14 +4,12 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
-import java.util.UUID;
-
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class TestSuiteRequest {
+public class ProjectRequest {
 
     @NotBlank(message = "Name is required")
     @Size(max = 200, message = "Name must not exceed 200 characters")
@@ -20,9 +18,4 @@ public class TestSuiteRequest {
     @Size(max = 2000, message = "Description must not exceed 2000 characters")
     @Builder.Default
     private String description = "";
-
-    /** Required for new suites; omitted updates leave collection unchanged. */
-    private UUID collectionId;
-
-    private UUID defaultEnvironmentId;
 }

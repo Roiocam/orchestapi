@@ -127,6 +127,7 @@ export interface TestStepRequest {
 
 export interface TestSuite {
   id: string
+  collectionId: string
   name: string
   description: string
   defaultEnvironmentId: string | null
@@ -138,6 +139,7 @@ export interface TestSuite {
 export interface TestSuiteRequest {
   name: string
   description: string
+  collectionId?: string | null
   defaultEnvironmentId: string | null
 }
 
@@ -145,6 +147,8 @@ export interface TestSuiteListParams {
   page?: number
   size?: number
   name?: string
+  projectId?: string
+  collectionId?: string
   sortBy?: string
   sortDir?: 'asc' | 'desc'
 }

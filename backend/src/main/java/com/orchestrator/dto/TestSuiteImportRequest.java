@@ -30,6 +30,9 @@ public class TestSuiteImportRequest {
     @Size(max = 2000, message = "Description must not exceed 2000 characters")
     private String description;
 
+    /** When omitted, suites are imported into the default collection. */
+    private java.util.UUID collectionId;
+
     @Valid
     @JsonSetter(nulls = Nulls.AS_EMPTY)
     private List<ImportStepDto> steps = new ArrayList<>();
