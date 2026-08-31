@@ -30,17 +30,6 @@ for required_value in \
   'SERVER_PORT' \
   'CONTEXT_PATH' \
   'JAVA_OPTS' \
-  'name: ORCHESTAPI_OAUTH_ENABLED' \
-  'name: ORCHESTAPI_OAUTH_TOKEN_ENDPOINT' \
-  'name: ORCHESTAPI_OAUTH_CLIENT_ID' \
-  'name: ORCHESTAPI_OAUTH_CLIENT_SECRET' \
-  'name: ORCHESTAPI_OAUTH_SCOPES' \
-  'name: ORCHESTAPI_OAUTH_AUDIENCE' \
-  'name: ORCHESTAPI_OAUTH_CLIENT_AUTH_METHOD' \
-  'name: ORCHESTAPI_OAUTH_REFRESH_SKEW_SECONDS' \
-  'name: ORCHESTAPI_OAUTH_REQUEST_TIMEOUT_MS' \
-  'name: orchestapi-oauth' \
-  'key: client-secret' \
   'name: DB_URL' \
   'name: DB_USERNAME' \
   'name: DB_PASSWORD' \
@@ -54,8 +43,8 @@ for required_value in \
   }
 done
 
-if grep -qE 'ORCHESTAPI_OAUTH_CLIENT_SECRET:[[:space:]]*[^[:space:]]|Bearer[[:space:]]+[A-Za-z0-9._~-]{20,}' <<<"$rendered"; then
-  echo "deployment contains a literal OAuth credential or bearer token" >&2
+if grep -qE 'ORCHESTAPI_OAUTH_|orchestapi-oauth|Bearer[[:space:]]+[A-Za-z0-9._~-]{20,}' <<<"$rendered"; then
+  echo "deployment contains legacy global OAuth configuration or a literal bearer token" >&2
   exit 1
 fi
 

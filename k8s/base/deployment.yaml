@@ -41,28 +41,6 @@ spec:
               value: /orchestapi
             - name: JAVA_OPTS
               value: -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
-            - name: ORCHESTAPI_OAUTH_ENABLED
-              value: "false"
-            - name: ORCHESTAPI_OAUTH_TOKEN_ENDPOINT
-              value: ""
-            - name: ORCHESTAPI_OAUTH_CLIENT_ID
-              value: ""
-            - name: ORCHESTAPI_OAUTH_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: orchestapi-oauth
-                  key: client-secret
-                  optional: true
-            - name: ORCHESTAPI_OAUTH_SCOPES
-              value: ""
-            - name: ORCHESTAPI_OAUTH_AUDIENCE
-              value: ""
-            - name: ORCHESTAPI_OAUTH_CLIENT_AUTH_METHOD
-              value: client_secret_basic
-            - name: ORCHESTAPI_OAUTH_REFRESH_SKEW_SECONDS
-              value: "60"
-            - name: ORCHESTAPI_OAUTH_REQUEST_TIMEOUT_MS
-              value: "10000"
             - name: DB_URL
               valueFrom:
                 secretKeyRef:
