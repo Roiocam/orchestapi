@@ -19,7 +19,7 @@ IMAGE_REPOSITORY="${IMAGE_REPOSITORY:-${IMAGE_REGISTRY_PREFIX%/}/${IMAGE_NAME}}"
 RUNTIME_IMAGE="${RUNTIME_IMAGE:-registry-stg.vestack.sbuxcf.net/yunxiao-paas/openjdk:21-ea-23-jdk-bullseye-1}"
 VITE_BASE_PATH="${VITE_BASE_PATH:-/orchestapi/}"
 IMAGE_TAG="${IMAGE_TAG:-}"
-IMAGE_PLATFORM="${IMAGE_PLATFORM:-}"
+IMAGE_PLATFORM="${IMAGE_PLATFORM:-linux/amd64}"
 MAVEN_BIN="${MAVEN_BIN:-}"
 K8S_NAMESPACE="${K8S_NAMESPACE:-orchestapi-internal}"
 K8S_DEPLOYMENT="${K8S_DEPLOYMENT:-orchestapi}"
@@ -64,7 +64,7 @@ OrchestAPI Starbucks 内部部署脚本
   --image-name NAME          镜像名（默认 orchestapi）
   --image-tag TAG            镜像 tag；也可用第一个位置参数
   --runtime-image IMAGE      Docker runtime FROM 镜像
-  --platform PLATFORM        Docker 构建平台，例如 linux/amd64
+  --platform PLATFORM        Docker 构建平台（默认 linux/amd64，可覆盖）
   --namespace NS              Kubernetes namespace
   --deployment NAME           Kubernetes Deployment 名称
   --container NAME            Kubernetes container 名称

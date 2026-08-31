@@ -17,7 +17,7 @@
 
 采用与 `agent-session` 相同的职责边界：前端和后端在构建机本地完成，Docker 不再运行 Node 或 Maven，只把已验证的 Spring Boot JAR 封装进运行时镜像。默认运行时 `FROM` 使用从 `agent-session`/Starbucks 项目构建配置中核对的 Java 基础镜像；平台若分配了其他批准镜像，通过 `RUNTIME_IMAGE` 覆盖。
 
-先确认构建机具备 Java 21、Node/npm、Maven（或 `backend/mvnw`）和 Docker，并登录内部镜像仓库。最小本地构建命令：
+先确认构建机具备 Java 21、Node/npm、Maven（或 `backend/mvnw`）和 Docker，并登录内部镜像仓库。由于当前核对的 Starbucks Java 基础镜像为 `linux/amd64`，`deploy.sh` 默认以 `linux/amd64` 作为 Docker 目标平台；平台若提供其他架构镜像，可用 `--platform` 或 `IMAGE_PLATFORM` 覆盖。最小本地构建命令：
 
 ```bash
 ./deploy.sh "$IMAGE_TAG" --skip-install

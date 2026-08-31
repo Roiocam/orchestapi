@@ -906,7 +906,10 @@ queue=my_queue routingKey=order.created
 ### Docker
 
 The production Dockerfile is runtime-only. Build the frontend and executable
-Spring Boot JAR locally, then let Docker package that JAR:
+Spring Boot JAR locally, then let Docker package that JAR. The deployment
+script targets `linux/amd64` by default because the checked Starbucks runtime
+image is amd64; override it with `--platform` when an approved multi-arch
+runtime is available:
 
 ```bash
 ./deploy.sh dev --skip-install

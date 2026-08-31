@@ -40,6 +40,7 @@ require_contains "Dockerfile" 'FROM ${RUNTIME_IMAGE}'
 require_contains "Dockerfile" 'COPY --chown=185:0 ${JAR_FILE} app.jar'
 require_contains "Dockerfile" "USER 185"
 require_contains "Dockerfile" 'registry-stg.vestack.sbuxcf.net/yunxiao-paas/openjdk:21-ea-23-jdk-bullseye-1'
+require_contains "deploy.sh" 'IMAGE_PLATFORM="${IMAGE_PLATFORM:-linux/amd64}"'
 require_contains "k8s/overlays/internal-example/kustomization.yaml" "registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi"
 require_contains "docker-compose.yml" "ORCHESTAPI_IMAGE"
 require_contains ".dockerignore" "!backend/target/orchestapi-*.jar"
