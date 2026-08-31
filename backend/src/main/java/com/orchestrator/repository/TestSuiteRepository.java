@@ -23,4 +23,8 @@ public interface TestSuiteRepository extends JpaRepository<TestSuite, UUID>, Jpa
     boolean existsByNameAndCollectionIdAndIdNot(String name, UUID collectionId, UUID id);
 
     long countByCollectionId(UUID collectionId);
+
+    List<TestSuite> findByCollectionIdOrderByNameAsc(UUID collectionId);
+
+    List<TestSuite> findByCollectionIdInOrderByNameAsc(List<UUID> collectionIds);
 }

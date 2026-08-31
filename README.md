@@ -541,11 +541,14 @@ Go to **Runs** page > **Schedules** tab.
 
 | Field | Description |
 |-------|-------------|
-| **Test Suite** | Which suite to run |
-| **Environment** | Which environment to use |
+| **Scope** | `Suite`, `Collection`, or `Project` |
+| **Target** | Which suite / collection / project to run |
+| **Environment** | Which environment to use for every suite in the batch |
 | **Cron Expression** | Standard 5-field cron pattern |
 | **Description** | Optional label |
 | **Active** | Toggle on/off without deleting |
+
+Collection and project schedules expand to all suites under the target (ordered by name), then run them **one after another** with the same failure semantics as a suite run: a failed suite does not stop the rest. An empty collection/project is treated like an empty suite — a successful no-op.
 
 ### Cron Format
 
@@ -579,6 +582,9 @@ Use **Preview** to see the next fire times before saving.
 - `#{param:default}` placeholders use the default value automatically
 - `#{param}` without a default is skipped
 - Results are saved to run history with trigger type `SCHEDULED`
+- Collection / project schedules create **one run history row per suite**, sharing the same `scheduleId`
+- Suites in a batch run **sequentially**; a failed suite does not stop later suites (same continue-on-failure idea as steps inside a suite)
+- Empty collection / project scopes complete as a successful no-op (same idea as an empty suite)
 
 ---
 

@@ -1,3 +1,30 @@
+/* Self-hosted Google Fonts assets keep the internal deployment independent of
+ * external font endpoints. Vite rewrites these relative URLs with the
+ * configured /orchestapi/ base path during the production build. */
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('./assets/fonts/fira-code-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 300 600;
+  font-display: swap;
+  src: url('./assets/fonts/outfit-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Syne';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('./assets/fonts/syne-latin.woff2') format('woff2');
+}
+
 /* ─── Theme Variables ─── */
 :root {
   --bg-primary: #f3f6fa;
@@ -777,6 +804,5 @@ code, pre, .ant-input-affix-wrapper code, kbd {
     justify-content: flex-start;
   }
 }
-
 
 

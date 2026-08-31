@@ -13,7 +13,18 @@ import java.util.UUID;
 @AllArgsConstructor
 public class RunScheduleRequest {
 
-    @NotNull(message = "Suite ID is required")
+    /**
+     * SUITE | COLLECTION | PROJECT. Defaults to SUITE when omitted and {@link #suiteId} is set.
+     */
+    @Size(max = 20)
+    private String scopeType;
+
+    /** Target id for the given scope. Required unless legacy {@link #suiteId} is used. */
+    private UUID scopeId;
+
+    /**
+     * Legacy field: treated as scopeType=SUITE + scopeId=suiteId when scopeType/scopeId omitted.
+     */
     private UUID suiteId;
 
     @NotNull(message = "Environment ID is required")

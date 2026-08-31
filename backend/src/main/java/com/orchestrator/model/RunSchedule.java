@@ -1,5 +1,6 @@
 package com.orchestrator.model;
 
+import com.orchestrator.model.enums.ScheduleScopeType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLRestriction;
@@ -21,7 +22,19 @@ public class RunSchedule {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "suite_id", nullable = false)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "scope_type", nullable = false, length = 20)
+    @Builder.Default
+    private ScheduleScopeType scopeType = ScheduleScopeType.SUITE;
+
+    @Column(name = "scope_id", nullable = false)
+    private UUID scopeId;
+
+    /**
+     * Populated only when {@link #scopeType} is {@link ScheduleScopeType#SUITE}
+     * for backwards-compatible queries. Null for collection/project scopes.
+     */
+    @Column(name = "suite_id")
     private UUID suiteId;
 
     @Column(name = "environment_id", nullable = false)

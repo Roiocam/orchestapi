@@ -52,4 +52,18 @@ require_contains ".dockerignore" "!backend/target/orchestapi-*.jar"
 reject_contains "Dockerfile" "FROM node:"
 reject_contains "Dockerfile" "FROM maven:"
 
+for font_file in fira-code-latin.woff2 outfit-latin.woff2 syne-latin.woff2; do
+  [[ -s "$ROOT_DIR/frontend/src/assets/fonts/$font_file" ]] || {
+    echo "Missing local frontend font asset: $font_file" >&2
+    exit 1
+  }
+done
+
+require_contains "frontend/src/index.css" "@font-face"
+require_contains "frontend/src/index.css" "fira-code-latin.woff2"
+require_contains "frontend/src/index.css" "outfit-latin.woff2"
+require_contains "frontend/src/index.css" "syne-latin.woff2"
+reject_contains "frontend/index.html" "fonts.googleapis.com"
+reject_contains "frontend/index.html" "fonts.gstatic.com"
+
 echo "Local frontend + Maven JAR deployment contract is present."

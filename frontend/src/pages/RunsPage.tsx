@@ -17,6 +17,7 @@ import {
   Modal,
   Form,
   Spin,
+  Segmented,
 } from 'antd'
 import type { InputRef } from 'antd'
 import {
@@ -38,6 +39,7 @@ import { runApi } from '../services/runApi'
 import { scheduleApi } from '../services/scheduleApi'
 import { testSuiteApi } from '../services/testSuiteApi'
 import { environmentApi } from '../services/environmentApi'
+import { projectApi, collectionApi } from '../services/projectApi'
 import RunResultsPanel from '../components/RunResultsPanel'
 
 const { Text } = Typography
@@ -181,9 +183,13 @@ export default function RunsPage() {
   const [editingSchedule, setEditingSchedule] = useState<RunScheduleResponse | null>(null)
   const [scheduleForm] = Form.useForm()
   const [scheduleSubmitting, setScheduleSubmitting] = useState(false)
+  const watchedScopeType = Form.useWatch('scopeType', scheduleForm) as 'SUITE' | 'COLLECTION' | 'PROJECT' | undefined
+  const scheduleScopeType = watchedScopeType ?? 'SUITE'
 
   // Dropdown options for schedule modal
   const [suiteOptions, setSuiteOptions] = useState<{ value: string; label: string }[]>([])
+  const [collectionOptions, setCollectionOptions] = useState<{ value: string; label: string }[]>([])
+  const [projectOptions, setProjectOptions] = useState<{ value: string; label: string }[]>([])
   const [envOptions, setEnvOptions] = useState<{ value: string; label: string }[]>([])
 
   // Cron preview
@@ -245,11 +251,15 @@ export default function RunsPage() {
   // ──── Load dropdown options for schedule modal ────
   const loadDropdownOptions = useCallback(async () => {
     try {
-      const [suitesRes, envsRes] = await Promise.all([
+      const [suitesRes, collections, projects, envsRes] = await Promise.all([
         testSuiteApi.list({ size: 1000 }),
+        collectionApi.list(),
+        projectApi.list(),
         environmentApi.list({ size: 1000 }),
       ])
       setSuiteOptions(suitesRes.content.map((s) => ({ value: s.id, label: s.name })))
+      setCollectionOptions(collections.map((c) => ({ value: c.id, label: c.name })))
+      setProjectOptions(projects.map((p) => ({ value: p.id, label: p.name })))
       setEnvOptions(envsRes.content.map((e) => ({ value: e.id, label: e.name })))
     } catch {
       message.error('Failed to load dropdown options')
@@ -348,8 +358,10 @@ export default function RunsPage() {
   const openScheduleModal = (schedule?: RunScheduleResponse) => {
     setEditingSchedule(schedule ?? null)
     if (schedule) {
+      const scopeType = schedule.scopeType ?? 'SUITE'
       scheduleForm.setFieldsValue({
-        suiteId: schedule.suiteId,
+        scopeType,
+        scopeId: schedule.scopeId ?? schedule.suiteId,
         environmentId: schedule.environmentId,
         cronExpression: schedule.cronExpression,
         description: schedule.description ?? '',
@@ -357,6 +369,7 @@ export default function RunsPage() {
       setCronValue(schedule.cronExpression)
     } else {
       scheduleForm.resetFields()
+      scheduleForm.setFieldsValue({ scopeType: 'SUITE' })
       setCronValue('')
     }
     setCronPreview(null)
@@ -369,7 +382,8 @@ export default function RunsPage() {
       const values = await scheduleForm.validateFields()
       setScheduleSubmitting(true)
       const payload: RunScheduleRequest = {
-        suiteId: values.suiteId,
+        scopeType: values.scopeType ?? 'SUITE',
+        scopeId: values.scopeId,
         environmentId: values.environmentId,
         cronExpression: values.cronExpression,
         description: values.description || undefined,
@@ -554,10 +568,19 @@ export default function RunsPage() {
       ),
     },
     {
-      title: 'Suite Name',
-      dataIndex: 'suiteName',
-      key: 'suiteName',
-      render: (name: string) => <strong>{name}</strong>,
+      title: 'Target',
+      key: 'target',
+      render: (_: unknown, record: RunScheduleResponse) => (
+        <Space size={6} wrap>
+          <Tag>{record.scopeType ?? 'SUITE'}</Tag>
+          <strong>{record.scopeName ?? record.suiteName ?? '—'}</strong>
+          {typeof record.suiteCount === 'number' && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.suiteCount} suite{record.suiteCount === 1 ? '' : 's'}
+            </Text>
+          )}
+        </Space>
+      ),
     },
     {
       title: 'Environment',
@@ -838,21 +861,59 @@ export default function RunsPage() {
         <Form
           form={scheduleForm}
           layout="vertical"
-          size="small"
-          style={{ marginTop: 16 }}
+          requiredMark="optional"
+          style={{ marginTop: 8 }}
+          initialValues={{ scopeType: 'SUITE' }}
         >
           <Form.Item
-            name="suiteId"
-            label="Suite"
-            rules={[{ required: true, message: 'Please select a test suite' }]}
+            name="scopeType"
+            label="Scope"
+            rules={[{ required: true, message: 'Please select a scope' }]}
+            extra="Collection and project schedules run every suite under the target, one after another."
+          >
+            <Segmented
+              block
+              options={[
+                { label: 'Suite', value: 'SUITE' },
+                { label: 'Collection', value: 'COLLECTION' },
+                { label: 'Project', value: 'PROJECT' },
+              ]}
+              onChange={() => {
+                scheduleForm.setFieldsValue({ scopeId: undefined })
+              }}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="scopeId"
+            label={
+              scheduleScopeType === 'PROJECT'
+                ? 'Project'
+                : scheduleScopeType === 'COLLECTION'
+                  ? 'Collection'
+                  : 'Suite'
+            }
+            rules={[{ required: true, message: 'Please select a target' }]}
           >
             <Select
-              placeholder="Select test suite"
+              placeholder={
+                scheduleScopeType === 'PROJECT'
+                  ? 'Select project'
+                  : scheduleScopeType === 'COLLECTION'
+                    ? 'Select collection'
+                    : 'Select test suite'
+              }
               showSearch
               filterOption={(input, option) =>
                 (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
               }
-              options={suiteOptions}
+              options={
+                scheduleScopeType === 'PROJECT'
+                  ? projectOptions
+                  : scheduleScopeType === 'COLLECTION'
+                    ? collectionOptions
+                    : suiteOptions
+              }
             />
           </Form.Item>
 

@@ -11,7 +11,13 @@ import java.time.LocalDateTime;
 @Builder
 public class RunScheduleResponse {
     private String id;
+    private String scopeType;
+    private String scopeId;
+    private String scopeName;
+    private Integer suiteCount;
+    /** Present when scopeType is SUITE (back-compat). */
     private String suiteId;
+    /** Present when scopeType is SUITE (back-compat). */
     private String suiteName;
     private String environmentId;
     private String environmentName;

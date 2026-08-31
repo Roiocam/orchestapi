@@ -6,16 +6,20 @@ import com.orchestrator.dto.RunScheduleRequest;
 import com.orchestrator.dto.RunScheduleResponse;
 import com.orchestrator.dto.SuiteExecutionResult;
 import com.orchestrator.exception.NotFoundException;
+import com.orchestrator.model.ApiCollection;
 import com.orchestrator.model.Environment;
+import com.orchestrator.model.Project;
 import com.orchestrator.model.RunSchedule;
 import com.orchestrator.model.TestRun;
 import com.orchestrator.model.TestSuite;
+import com.orchestrator.model.enums.ScheduleScopeType;
 import com.orchestrator.model.enums.TriggerType;
+import com.orchestrator.repository.ApiCollectionRepository;
 import com.orchestrator.repository.EnvironmentRepository;
+import com.orchestrator.repository.ProjectRepository;
 import com.orchestrator.repository.RunScheduleRepository;
 import com.orchestrator.repository.TestSuiteRepository;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
@@ -39,6 +43,8 @@ public class ScheduleService {
 
     private final RunScheduleRepository repository;
     private final TestSuiteRepository suiteRepository;
+    private final ApiCollectionRepository collectionRepository;
+    private final ProjectRepository projectRepository;
     private final EnvironmentRepository environmentRepository;
     private final RunService runService;
     private final ExecutionService executionService;
@@ -48,12 +54,16 @@ public class ScheduleService {
 
     public ScheduleService(RunScheduleRepository repository,
                            TestSuiteRepository suiteRepository,
+                           ApiCollectionRepository collectionRepository,
+                           ProjectRepository projectRepository,
                            EnvironmentRepository environmentRepository,
                            RunService runService,
                            @Lazy ExecutionService executionService,
                            TaskScheduler taskScheduler) {
         this.repository = repository;
         this.suiteRepository = suiteRepository;
+        this.collectionRepository = collectionRepository;
+        this.projectRepository = projectRepository;
         this.environmentRepository = environmentRepository;
         this.runService = runService;
         this.executionService = executionService;
@@ -73,25 +83,15 @@ public class ScheduleService {
 
     @Transactional
     public RunScheduleResponse create(RunScheduleRequest req) {
-        // Validate suite exists
-        suiteRepository.findById(req.getSuiteId())
-                .orElseThrow(() -> new NotFoundException("Test suite not found: " + req.getSuiteId()));
-
-        // Validate environment exists
-        environmentRepository.findById(req.getEnvironmentId())
-                .orElseThrow(() -> new NotFoundException("Environment not found: " + req.getEnvironmentId()));
-
-        // Normalize and validate cron expression
-        String cron = normalizeCron(req.getCronExpression());
-        try {
-            CronExpression.parse(cron);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid cron expression: " + e.getMessage());
-        }
+        ResolvedScope scope = resolveAndValidateScope(req);
+        Environment env = requireEnvironment(req.getEnvironmentId());
+        String cron = validateCron(req.getCronExpression());
 
         RunSchedule schedule = RunSchedule.builder()
-                .suiteId(req.getSuiteId())
-                .environmentId(req.getEnvironmentId())
+                .scopeType(scope.type())
+                .scopeId(scope.id())
+                .suiteId(scope.type() == ScheduleScopeType.SUITE ? scope.id() : null)
+                .environmentId(env.getId())
                 .cronExpression(cron)
                 .description(req.getDescription())
                 .active(true)
@@ -133,27 +133,15 @@ public class ScheduleService {
         RunSchedule schedule = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + id));
 
-        // Validate suite exists
-        suiteRepository.findById(req.getSuiteId())
-                .orElseThrow(() -> new NotFoundException("Test suite not found: " + req.getSuiteId()));
+        ResolvedScope scope = resolveAndValidateScope(req);
+        requireEnvironment(req.getEnvironmentId());
+        String cron = validateCron(req.getCronExpression());
 
-        // Validate environment exists
-        environmentRepository.findById(req.getEnvironmentId())
-                .orElseThrow(() -> new NotFoundException("Environment not found: " + req.getEnvironmentId()));
-
-        // Normalize and validate cron expression
-        String cron = normalizeCron(req.getCronExpression());
-        try {
-            CronExpression.parse(cron);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid cron expression: " + e.getMessage());
-        }
-
-        // Cancel existing task
         cancelTask(schedule.getId());
 
-        // Update entity
-        schedule.setSuiteId(req.getSuiteId());
+        schedule.setScopeType(scope.type());
+        schedule.setScopeId(scope.id());
+        schedule.setSuiteId(scope.type() == ScheduleScopeType.SUITE ? scope.id() : null);
         schedule.setEnvironmentId(req.getEnvironmentId());
         schedule.setCronExpression(cron);
         schedule.setDescription(req.getDescription());
@@ -161,7 +149,6 @@ public class ScheduleService {
 
         schedule = repository.save(schedule);
 
-        // Register new task if active
         if (schedule.getActive()) {
             registerTask(schedule);
         }
@@ -183,7 +170,6 @@ public class ScheduleService {
         RunSchedule schedule = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Schedule not found: " + id));
 
-        // Flip active flag
         boolean newActive = !schedule.getActive();
         schedule.setActive(newActive);
 
@@ -227,7 +213,7 @@ public class ScheduleService {
     // ── Task scheduling ───────────────────────────────────────────────────
 
     private void registerTask(RunSchedule schedule) {
-        cancelTask(schedule.getId()); // cancel existing if any
+        cancelTask(schedule.getId());
         try {
             CronTrigger trigger = new CronTrigger(normalizeCron(schedule.getCronExpression()));
             ScheduledFuture<?> future = taskScheduler.schedule(
@@ -247,63 +233,157 @@ public class ScheduleService {
     }
 
     private void executeScheduledRun(UUID scheduleId) {
-        // 1. Load schedule from DB (might have been deleted/disabled)
         RunSchedule schedule = repository.findById(scheduleId).orElse(null);
         if (schedule == null || !schedule.getActive()) {
             cancelTask(scheduleId);
             return;
         }
 
-        UUID runId = null;
+        List<TestSuite> targets;
         try {
-            // 2. Create a TestRun record
-            TestRun run = runService.createRun(
-                    schedule.getSuiteId(),
-                    schedule.getEnvironmentId(),
-                    TriggerType.SCHEDULED,
-                    scheduleId);
-            runId = run.getId();
+            targets = resolveTargetSuites(schedule.getScopeType(), schedule.getScopeId());
+        } catch (NotFoundException e) {
+            log.error("Scheduled run skipped — scope missing for schedule {}: {}", scheduleId, e.getMessage());
+            touchScheduleTimestamps(schedule);
+            return;
+        }
 
-            // 3. Prepare the suite run (loads all data inside a transaction)
-            ExecutionService.PreparedExecution prepared =
-                    executionService.prepareSuiteRun(schedule.getSuiteId(), schedule.getEnvironmentId());
+        // Empty scope mirrors empty suite: treat as successful no-op (no failure).
+        if (targets.isEmpty()) {
+            log.info("Scheduled run for {} {} has no suites — completing as empty success (schedule {})",
+                    schedule.getScopeType(), schedule.getScopeId(), scheduleId);
+            touchScheduleTimestamps(schedule);
+            return;
+        }
 
-            // 4. Execute non-interactively (no SSE, defaults for manual inputs)
-            SuiteExecutionResult result = executionService.executePreparedNonInteractive(prepared);
+        // Same as suite steps: keep going after a failure so the batch finishes.
+        for (TestSuite suite : targets) {
+            UUID runId = null;
+            try {
+                TestRun run = runService.createRun(
+                        suite.getId(),
+                        schedule.getEnvironmentId(),
+                        TriggerType.SCHEDULED,
+                        scheduleId);
+                runId = run.getId();
 
-            // 5. Complete the run with results
-            runService.completeRun(runId, result);
+                ExecutionService.PreparedExecution prepared =
+                        executionService.prepareSuiteRun(suite.getId(), schedule.getEnvironmentId());
+                SuiteExecutionResult result = executionService.executePreparedNonInteractive(prepared);
+                runService.completeRun(runId, result);
 
-            // 6. Update schedule timestamps
+                log.info("Scheduled suite {} completed for schedule {}: {}",
+                        suite.getId(), scheduleId, result.getStatus());
+            } catch (Exception e) {
+                log.error("Scheduled suite {} failed for schedule {}: {}",
+                        suite.getId(), scheduleId, e.getMessage(), e);
+                if (runId != null) {
+                    runService.failRun(runId, e.getMessage());
+                }
+            }
+        }
+
+        touchScheduleTimestamps(schedule);
+    }
+
+    private void touchScheduleTimestamps(RunSchedule schedule) {
+        try {
             schedule.setLastRunAt(LocalDateTime.now());
             schedule.setNextRunAt(computeNextRunAt(schedule.getCronExpression()));
             repository.save(schedule);
-
-            log.info("Scheduled run completed for suite {} (schedule {}): {}",
-                    schedule.getSuiteId(), scheduleId, result.getStatus());
-
-        } catch (Exception e) {
-            log.error("Scheduled run failed for schedule {}: {}", scheduleId, e.getMessage(), e);
-            if (runId != null) {
-                runService.failRun(runId, e.getMessage());
-            }
-            // Update nextRunAt even on failure
-            try {
-                schedule.setLastRunAt(LocalDateTime.now());
-                schedule.setNextRunAt(computeNextRunAt(schedule.getCronExpression()));
-                repository.save(schedule);
-            } catch (Exception ex) {
-                log.error("Failed to update schedule timestamps: {}", ex.getMessage());
-            }
+        } catch (Exception ex) {
+            log.error("Failed to update schedule timestamps: {}", ex.getMessage());
         }
+    }
+
+    // ── Scope resolution ──────────────────────────────────────────────────
+
+    private record ResolvedScope(ScheduleScopeType type, UUID id) {}
+
+    private ResolvedScope resolveAndValidateScope(RunScheduleRequest req) {
+        ScheduleScopeType type;
+        UUID scopeId;
+
+        if (req.getScopeType() != null && !req.getScopeType().isBlank()) {
+            try {
+                type = ScheduleScopeType.valueOf(req.getScopeType().trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        "Invalid scopeType: " + req.getScopeType() + " (expected SUITE, COLLECTION, or PROJECT)");
+            }
+            scopeId = req.getScopeId() != null ? req.getScopeId() : req.getSuiteId();
+            if (scopeId == null) {
+                throw new IllegalArgumentException("scopeId is required when scopeType is set");
+            }
+        } else if (req.getSuiteId() != null) {
+            type = ScheduleScopeType.SUITE;
+            scopeId = req.getSuiteId();
+        } else if (req.getScopeId() != null) {
+            type = ScheduleScopeType.SUITE;
+            scopeId = req.getScopeId();
+        } else {
+            throw new IllegalArgumentException("scopeType + scopeId (or legacy suiteId) is required");
+        }
+
+        switch (type) {
+            case SUITE -> suiteRepository.findById(scopeId)
+                    .orElseThrow(() -> new NotFoundException("Test suite not found: " + scopeId));
+            case COLLECTION -> collectionRepository.findById(scopeId)
+                    .orElseThrow(() -> new NotFoundException("Collection not found: " + scopeId));
+            case PROJECT -> projectRepository.findById(scopeId)
+                    .orElseThrow(() -> new NotFoundException("Project not found: " + scopeId));
+        }
+
+        return new ResolvedScope(type, scopeId);
+    }
+
+    /**
+     * Expand schedule scope to ordered suite targets.
+     * Collection: suites in that collection by name.
+     * Project: collections by name, then suites by name within each.
+     */
+    List<TestSuite> resolveTargetSuites(ScheduleScopeType type, UUID scopeId) {
+        return switch (type) {
+            case SUITE -> {
+                TestSuite suite = suiteRepository.findById(scopeId)
+                        .orElseThrow(() -> new NotFoundException("Test suite not found: " + scopeId));
+                yield List.of(suite);
+            }
+            case COLLECTION -> {
+                collectionRepository.findById(scopeId)
+                        .orElseThrow(() -> new NotFoundException("Collection not found: " + scopeId));
+                yield suiteRepository.findByCollectionIdOrderByNameAsc(scopeId);
+            }
+            case PROJECT -> {
+                projectRepository.findById(scopeId)
+                        .orElseThrow(() -> new NotFoundException("Project not found: " + scopeId));
+                List<ApiCollection> collections = collectionRepository.findByProjectIdOrderByNameAsc(scopeId);
+                List<TestSuite> suites = new ArrayList<>();
+                for (ApiCollection collection : collections) {
+                    suites.addAll(suiteRepository.findByCollectionIdOrderByNameAsc(collection.getId()));
+                }
+                yield suites;
+            }
+        };
+    }
+
+    private Environment requireEnvironment(UUID environmentId) {
+        return environmentRepository.findById(environmentId)
+                .orElseThrow(() -> new NotFoundException("Environment not found: " + environmentId));
+    }
+
+    private String validateCron(String cronExpression) {
+        String cron = normalizeCron(cronExpression);
+        try {
+            CronExpression.parse(cron);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid cron expression: " + e.getMessage());
+        }
+        return cron;
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    /**
-     * Normalize cron expression: if user provides 5 fields (standard Unix cron),
-     * prepend "0 " to add seconds field. Spring CronExpression requires 6 fields.
-     */
     private String normalizeCron(String cronExpression) {
         String trimmed = cronExpression.trim();
         String[] fields = trimmed.split("\\s+");
@@ -323,10 +403,20 @@ public class ScheduleService {
     }
 
     private RunScheduleResponse toResponse(RunSchedule schedule) {
+        ScheduleScopeType type = schedule.getScopeType() != null
+                ? schedule.getScopeType()
+                : ScheduleScopeType.SUITE;
+        UUID scopeId = schedule.getScopeId() != null ? schedule.getScopeId() : schedule.getSuiteId();
+        ScopeDisplay display = resolveScopeDisplay(type, scopeId);
+
         return RunScheduleResponse.builder()
                 .id(schedule.getId().toString())
-                .suiteId(schedule.getSuiteId().toString())
-                .suiteName(resolveSuiteName(schedule.getSuiteId()))
+                .scopeType(type.name())
+                .scopeId(scopeId != null ? scopeId.toString() : null)
+                .scopeName(display.name())
+                .suiteCount(display.suiteCount())
+                .suiteId(type == ScheduleScopeType.SUITE && scopeId != null ? scopeId.toString() : null)
+                .suiteName(type == ScheduleScopeType.SUITE ? display.name() : null)
                 .environmentId(schedule.getEnvironmentId().toString())
                 .environmentName(resolveEnvironmentName(schedule.getEnvironmentId()))
                 .cronExpression(schedule.getCronExpression())
@@ -339,15 +429,42 @@ public class ScheduleService {
                 .build();
     }
 
-    private String resolveSuiteName(UUID suiteId) {
-        return suiteRepository.findById(suiteId)
-                .map(TestSuite::getName)
-                .orElse("(deleted)");
+    private record ScopeDisplay(String name, int suiteCount) {}
+
+    private ScopeDisplay resolveScopeDisplay(ScheduleScopeType type, UUID scopeId) {
+        if (scopeId == null) {
+            return new ScopeDisplay("Unknown", 0);
+        }
+        try {
+            return switch (type) {
+                case SUITE -> {
+                    String name = suiteRepository.findById(scopeId).map(TestSuite::getName).orElse("Unknown suite");
+                    yield new ScopeDisplay(name, 1);
+                }
+                case COLLECTION -> {
+                    String name = collectionRepository.findById(scopeId).map(ApiCollection::getName).orElse("Unknown collection");
+                    int count = (int) suiteRepository.countByCollectionId(scopeId);
+                    yield new ScopeDisplay(name, count);
+                }
+                case PROJECT -> {
+                    String name = projectRepository.findById(scopeId).map(Project::getName).orElse("Unknown project");
+                    List<UUID> collectionIds = collectionRepository.findByProjectIdOrderByNameAsc(scopeId).stream()
+                            .map(ApiCollection::getId)
+                            .toList();
+                    int count = collectionIds.isEmpty()
+                            ? 0
+                            : suiteRepository.findByCollectionIdInOrderByNameAsc(collectionIds).size();
+                    yield new ScopeDisplay(name, count);
+                }
+            };
+        } catch (Exception e) {
+            return new ScopeDisplay("Unknown", 0);
+        }
     }
 
     private String resolveEnvironmentName(UUID environmentId) {
         return environmentRepository.findById(environmentId)
                 .map(Environment::getName)
-                .orElse("(deleted)");
+                .orElse("Unknown");
     }
 }

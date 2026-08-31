@@ -18,8 +18,13 @@ export interface TestRunResponse {
 
 export interface RunScheduleResponse {
   id: string
-  suiteId: string
-  suiteName: string
+  scopeType: 'SUITE' | 'COLLECTION' | 'PROJECT'
+  scopeId: string
+  scopeName: string
+  suiteCount: number
+  /** Present when scopeType is SUITE (back-compat). */
+  suiteId: string | null
+  suiteName: string | null
   environmentId: string
   environmentName: string
   cronExpression: string
@@ -32,10 +37,13 @@ export interface RunScheduleResponse {
 }
 
 export interface RunScheduleRequest {
-  suiteId: string
+  scopeType: 'SUITE' | 'COLLECTION' | 'PROJECT'
+  scopeId: string
   environmentId: string
   cronExpression: string
   description?: string
+  /** @deprecated prefer scopeType=SUITE + scopeId */
+  suiteId?: string
 }
 
 export interface CronPreviewResponse {
