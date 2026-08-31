@@ -33,6 +33,12 @@ RUN mvn clean package -DskipTests -B
 # ── Stage 3: Production Runtime ──────────────────────────────
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
+ARG APP_VERSION=dev
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.title="OrchestAPI" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Add non-root user for security
 RUN addgroup -S orchestapi && adduser -S orchestapi -G orchestapi
 

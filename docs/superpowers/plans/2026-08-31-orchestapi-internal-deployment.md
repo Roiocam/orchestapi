@@ -56,7 +56,10 @@
 Create `ProductionDeploymentConfigurationTest` with the exact Spring test configuration and assertions below. It reuses the existing H2 test profile and adds `prod` only for the production actuator policy.
 
 ```java
-@SpringBootTest(properties = "server.servlet.context-path=/orchestapi")
+@SpringBootTest(properties = {
+        "server.servlet.context-path=/orchestapi",
+        "spring.datasource.url=jdbc:h2:mem:proddeployment;INIT=CREATE SCHEMA IF NOT EXISTS orchestrator"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles({"test", "prod"})
 class ProductionDeploymentConfigurationTest {
@@ -81,7 +84,7 @@ task_java_home=$(/usr/libexec/java_home -v 21)
 JAVA_HOME="$task_java_home" PATH="$task_java_home/bin:$PATH" mvn -Dtest=ProductionDeploymentConfigurationTest test
 ```
 
-Expected: the context cannot start because `application-test.yml` uses schema-qualified tables while H2 has no `orchestrator` schema; the test is not expected to reach the health assertion yet.
+Expected: the context starts using the test-local schema initializer, then the assertion fails because the production profile does not yet exist and health details still contain `components`.
 
 - [ ] **Step 3: Make the minimal runtime and test-profile changes.**
 
