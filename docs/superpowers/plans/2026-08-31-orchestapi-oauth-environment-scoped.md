@@ -208,10 +208,18 @@
 
 ## Completion Criteria
 
-- [ ] Environment OAuth schema、DTO、masked Secret 语义和 revision 已由 focused tests 覆盖。
-- [ ] Provider 按 Environment 隔离并发缓存，支持 basic/post、scope/audience、refresh skew、invalidate 和安全错误。
-- [ ] Token 仅在第一个 eligible 真实目标请求前惰性获取；prepare/curl/manual/DISABLED 不触发；Token 失败不调用目标。
-- [ ] 普通、单 Step、scheduled、SSE、dependency、side-effect 均使用不可变 Environment snapshot。
-- [ ] 前端 Environment UI 可保存/更新/清除 masked Secret，Step INHERIT/DISABLED 保持兼容，浏览器不接触 Access Token。
-- [ ] application/Kubernetes 不再提供全局 OAuth 来源，单 Deployment 验收脚本通过。
-- [ ] Java、frontend、Kustomize、mock endpoint 和安全审查证据已记录；真实 Starbucks IdP/网络/权限证据明确留给现场部署。
+- [x] Environment OAuth schema、DTO、masked Secret 语义和 revision 已由 focused tests 覆盖。
+- [x] Provider 按 Environment 隔离并发缓存，支持 basic/post、scope/audience、refresh skew、invalidate 和安全错误。
+- [x] Token 仅在第一个 eligible 真实目标请求前惰性获取；prepare/curl/manual/DISABLED 不触发；Token 失败不调用目标。
+- [x] 普通、单 Step、scheduled、SSE、dependency、side-effect 均使用不可变 Environment snapshot。
+- [x] 前端 Environment UI 可保存/更新/清除 masked Secret，Step INHERIT/DISABLED 保持兼容，浏览器不接触 Access Token。
+- [x] application/Kubernetes 不再提供全局 OAuth 来源，单 Deployment 验收脚本通过。
+- [x] Java、frontend、Kustomize、mock endpoint 和安全审查证据已记录；真实 Starbucks IdP/网络/权限证据明确留给现场部署。
+
+## Verification record (2026-08-31)
+
+- Backend: `JAVA_HOME=/Users/jingchen/Library/Java/JavaVirtualMachines/azul-21.0.10/Contents/Home PATH="/Users/jingchen/Library/Java/JavaVirtualMachines/azul-21.0.10/Contents/Home/bin:$PATH" mvn test` — `BUILD SUCCESS`, 65 tests, 0 failures/errors. H2 JSONB DDL、Webhook constraint 和本机 Mongo monitor 的既有警告未作为 OAuth 失败。
+- Frontend: `npm run build` — TypeScript/Vite build succeeded. Existing bundle-size warning remains. `npm run lint` still reports the repository's pre-existing 45 errors; no new lint-clean claim is made.
+- Deployment: `./test-script/verify-deployment-only.sh` and `kubectl kustomize k8s/overlays/internal-example` — exactly one Deployment, only database `secretKeyRef`, no Secret/ConfigMap/Service/Ingress/NetworkPolicy manifest, no `ORCHESTAPI_OAUTH_*` or `orchestapi-oauth` binding.
+- Runtime/security: provider and ExecutionService tests cover mocked token endpoint/target ordering, per-Environment cache isolation, single-flight, refresh/revision behavior, manual Authorization precedence, preview no-network behavior, safe error short-circuit, and prepared snapshot use. Source audit confirms no browser token fetch/cache and no remaining global OAuth binding in runtime sources.
+- Starbucks live proof remains pending: approved IdP Client/Secret, Environment API data entry, DNS/TLS/egress, external PostgreSQL, platform Service/Ingress/NetworkPolicy/allowlist, target API scopes and end-to-end SSE/scheduled traffic must be verified in the internal cluster.
