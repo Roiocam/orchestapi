@@ -10,16 +10,19 @@ import com.orchestrator.model.Environment;
 import com.orchestrator.model.EnvironmentConnector;
 import com.orchestrator.model.EnvironmentHeader;
 import com.orchestrator.model.EnvironmentVariable;
+import com.orchestrator.model.EnvironmentOAuthConfig;
 import com.orchestrator.model.HeaderValueType;
 import com.orchestrator.model.enums.ConnectorType;
 import com.orchestrator.model.EnvironmentFile;
 import com.orchestrator.repository.EnvironmentFileRepository;
+import com.orchestrator.repository.EnvironmentOAuthConfigRepository;
 import com.orchestrator.repository.EnvironmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -40,6 +43,8 @@ public class EnvironmentService {
     private final EnvironmentRepository repository;
     private final EnvironmentFileRepository fileRepository;
     private final ConnectorFactory connectorFactory;
+    private final EnvironmentOAuthConfigRepository oauthConfigRepository;
+    private final org.springframework.core.env.Environment springEnvironment;
 
     @Transactional(readOnly = true)
     public PageResponse<EnvironmentResponse> findAllPaged(String name, String baseUrl, Pageable pageable) {
@@ -66,6 +71,7 @@ public class EnvironmentService {
         List<Environment> withVars = repository.findByIdsWithVariables(ids);
         repository.findByIdsWithHeaders(ids); // populates Hibernate L1 cache
         repository.findByIdsWithConnectors(ids); // populates Hibernate L1 cache for connectors
+        repository.findByIdsWithOAuthConfigs(ids); // populates Hibernate L1 cache for OAuth config
 
         // Preserve page order
         Map<UUID, Environment> byId = withVars.stream()
@@ -100,6 +106,7 @@ public class EnvironmentService {
         applyVariables(env, request);
         applyHeaders(env, request);
         applyConnectors(env, request, Set.of());
+        applyOAuthOnCreate(env, request.getOauth());
 
         return EnvironmentResponse.from(repository.save(env), true);
     }
@@ -132,6 +139,7 @@ public class EnvironmentService {
         env.getConnectors().clear();
         repository.saveAndFlush(env); // flush deletes before re-insert to avoid unique constraint violation
         applyConnectors(env, request, existingConnectors);
+        applyOAuthOnUpdate(env, request.getOauth());
 
         return EnvironmentResponse.from(repository.save(env), true);
     }
@@ -140,8 +148,133 @@ public class EnvironmentService {
     public void delete(UUID id) {
         Environment env = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Environment not found: " + id));
+        oauthConfigRepository.findById(id).ifPresent(oauthConfigRepository::delete);
         env.setDeletedAt(LocalDateTime.now());
         repository.save(env);
+    }
+
+    private void applyOAuthOnCreate(Environment env, EnvironmentOAuthRequest request) {
+        EnvironmentOAuthConfig config = EnvironmentOAuthConfig.disabled(env.getId());
+        config.setEnvironment(env);
+        if (request != null) {
+            applyOAuthFields(config, request, false);
+        }
+        validateOAuth(config);
+        env.setOauthConfig(config);
+    }
+
+    private void applyOAuthOnUpdate(Environment env, EnvironmentOAuthRequest request) {
+        EnvironmentOAuthConfig config = env.getOauthConfig();
+        if (config == null) {
+            config = EnvironmentOAuthConfig.disabled(env.getId());
+            config.setEnvironment(env);
+            env.setOauthConfig(config);
+        }
+        if (request == null) {
+            return;
+        }
+
+        EnvironmentOAuthSnapshotBeforeUpdate before = EnvironmentOAuthSnapshotBeforeUpdate.from(config);
+        applyOAuthFields(config, request, true);
+        validateOAuth(config);
+        if (!before.matches(config)) {
+            config.setRevision(Math.max(1, before.revision()) + 1);
+        }
+    }
+
+    private void applyOAuthFields(
+            EnvironmentOAuthConfig config, EnvironmentOAuthRequest request, boolean preserveExistingValues) {
+        if (request.isClearClientSecret()
+                && hasNewClientSecret(request.getClientSecret())) {
+            throw new IllegalArgumentException("clearClientSecret cannot be combined with a new clientSecret");
+        }
+
+        if (request.getTokenEndpoint() != null || !preserveExistingValues) {
+            config.setTokenEndpoint(valueOrEmpty(request.getTokenEndpoint()));
+        }
+        if (request.getClientId() != null || !preserveExistingValues) {
+            config.setClientId(valueOrEmpty(request.getClientId()));
+        }
+        if (request.getScopes() != null || !preserveExistingValues) {
+            config.setScopes(valueOrEmpty(request.getScopes()));
+        }
+        if (request.getAudience() != null || !preserveExistingValues) {
+            config.setAudience(valueOrEmpty(request.getAudience()));
+        }
+        if (request.getClientAuthMethod() != null || !preserveExistingValues) {
+            config.setClientAuthMethod(
+                    request.getClientAuthMethod() == null || request.getClientAuthMethod().isBlank()
+                            ? EnvironmentOAuthConfig.CLIENT_SECRET_BASIC
+                            : request.getClientAuthMethod().trim());
+        }
+        if (request.getRefreshSkewSeconds() != null || !preserveExistingValues) {
+            config.setRefreshSkewSeconds(request.getRefreshSkewSeconds() == null
+                    ? 60 : request.getRefreshSkewSeconds());
+        }
+        if (request.getRequestTimeoutMs() != null || !preserveExistingValues) {
+            config.setRequestTimeoutMs(request.getRequestTimeoutMs() == null
+                    ? 10_000 : request.getRequestTimeoutMs());
+        }
+        config.setEnabled(request.isEnabled());
+
+        if (request.isClearClientSecret()) {
+            config.setClientSecret("");
+        } else if (!preserveExistingValues) {
+            config.setClientSecret(valueOrEmpty(request.getClientSecret()));
+        } else if (hasNewClientSecret(request.getClientSecret())) {
+            config.setClientSecret(request.getClientSecret());
+        }
+    }
+
+    private void validateOAuth(EnvironmentOAuthConfig config) {
+        config.validate(springEnvironment.acceptsProfiles(Profiles.of("prod")));
+    }
+
+    private boolean hasNewClientSecret(String value) {
+        return value != null && !value.isBlank() && !EnvironmentOAuthConfig.MASKED_SECRET.equals(value);
+    }
+
+    private String valueOrEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private record EnvironmentOAuthSnapshotBeforeUpdate(
+            boolean enabled,
+            String tokenEndpoint,
+            String clientId,
+            String clientSecret,
+            String scopes,
+            String audience,
+            String clientAuthMethod,
+            long refreshSkewSeconds,
+            long requestTimeoutMs,
+            long revision) {
+
+        static EnvironmentOAuthSnapshotBeforeUpdate from(EnvironmentOAuthConfig config) {
+            return new EnvironmentOAuthSnapshotBeforeUpdate(
+                    config.isEnabled(),
+                    config.getTokenEndpoint(),
+                    config.getClientId(),
+                    config.getClientSecret(),
+                    config.getScopes(),
+                    config.getAudience(),
+                    config.getClientAuthMethod(),
+                    config.getRefreshSkewSeconds(),
+                    config.getRequestTimeoutMs(),
+                    config.getRevision());
+        }
+
+        boolean matches(EnvironmentOAuthConfig config) {
+            return enabled == config.isEnabled()
+                    && Objects.equals(tokenEndpoint, config.getTokenEndpoint())
+                    && Objects.equals(clientId, config.getClientId())
+                    && Objects.equals(clientSecret, config.getClientSecret())
+                    && Objects.equals(scopes, config.getScopes())
+                    && Objects.equals(audience, config.getAudience())
+                    && Objects.equals(clientAuthMethod, config.getClientAuthMethod())
+                    && refreshSkewSeconds == config.getRefreshSkewSeconds()
+                    && requestTimeoutMs == config.getRequestTimeoutMs();
+        }
     }
 
     @Transactional(readOnly = true)

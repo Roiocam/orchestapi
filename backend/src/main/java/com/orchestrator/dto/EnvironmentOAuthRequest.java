@@ -20,10 +20,10 @@ public class EnvironmentOAuthRequest {
     private String clientAuthMethod;
 
     @Builder.Default
-    private long refreshSkewSeconds = 60;
+    private Long refreshSkewSeconds = 60L;
 
     @Builder.Default
-    private long requestTimeoutMs = 10_000;
+    private Long requestTimeoutMs = 10_000L;
 
     @Builder.Default
     private boolean clearClientSecret = false;
