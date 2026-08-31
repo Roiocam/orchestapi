@@ -9,6 +9,7 @@ import com.orchestrator.exception.NotFoundException;
 import com.orchestrator.model.*;
 import com.orchestrator.model.enums.BodyType;
 import com.orchestrator.oauth.OAuthRequestAuthorizer;
+import com.orchestrator.oauth.EnvironmentOAuthSnapshot;
 import com.orchestrator.oauth.OAuthTokenException;
 import com.orchestrator.oauth.RequestHeaderRedactor;
 import com.orchestrator.repository.EnvironmentFileRepository;
@@ -1568,10 +1569,12 @@ public class ExecutionService {
 
         // 3. Apply automatic OAuth only when neither environment nor step supplied
         // Authorization. Preview never calls the Token endpoint.
+        EnvironmentOAuthSnapshot oauth = env != null && env.getOauthConfig() != null
+                ? env.getOauthConfig().snapshot() : null;
         if (preview) {
-            oauthRequestAuthorizer.applyPreview(step, httpHeaders);
+            oauthRequestAuthorizer.applyPreview(step, oauth, httpHeaders);
         } else {
-            oauthRequestAuthorizer.apply(step, httpHeaders);
+            oauthRequestAuthorizer.apply(step, oauth, httpHeaders);
         }
 
         return httpHeaders;

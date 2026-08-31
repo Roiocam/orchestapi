@@ -1,6 +1,6 @@
 package com.orchestrator.oauth;
 
-import com.orchestrator.config.OAuthProperties;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -43,14 +44,19 @@ class ClientCredentialsOAuthTokenProviderTest {
     private RestTemplate restTemplate;
     private MockRestServiceServer server;
     private MutableClock clock;
-    private OAuthProperties properties;
+    private EnvironmentOAuthSnapshot oauth;
 
     @BeforeEach
     void setUp() {
         restTemplate = new RestTemplate();
         server = MockRestServiceServer.bindTo(restTemplate).build();
         clock = new MutableClock(Instant.parse("2030-01-01T00:00:00Z"));
-        properties = validProperties("client_secret_basic");
+        oauth = validSnapshot(UUID.randomUUID(), ENDPOINT, "service-client", "client_secret_basic", 10_000);
+    }
+
+    @AfterEach
+    void tearDown() {
+        server.reset();
     }
 
     @Test
@@ -68,9 +74,9 @@ class ClientCredentialsOAuthTokenProviderTest {
 
         ClientCredentialsOAuthTokenProvider provider = provider();
 
-        assertThat(provider.getToken().value()).isEqualTo("token-1");
+        assertThat(provider.getToken(oauth).value()).isEqualTo("token-1");
         clock.advanceSeconds(239);
-        assertThat(provider.getToken().value()).isEqualTo("token-1");
+        assertThat(provider.getToken(oauth).value()).isEqualTo("token-1");
         server.verify();
     }
 
@@ -84,8 +90,8 @@ class ClientCredentialsOAuthTokenProviderTest {
         ClientCredentialsOAuthTokenProvider provider = provider();
         ExecutorService executor = Executors.newFixedThreadPool(8);
         try {
-            List<Future<String>> futures = IntStream.range(0, 8)
-                    .mapToObj(index -> executor.submit(() -> provider.getToken().value()))
+        List<Future<String>> futures = IntStream.range(0, 8)
+                    .mapToObj(index -> executor.submit(() -> provider.getToken(oauth).value()))
                     .toList();
 
             assertThat(futures).allSatisfy(future -> assertThat(future.get()).isEqualTo("token-1"));
@@ -97,8 +103,11 @@ class ClientCredentialsOAuthTokenProviderTest {
 
     @Test
     void sendsPostClientAuthenticationAndAudience() {
-        properties.setClientAuthMethod("client_secret_post");
-        properties.setAudience("orders-api");
+        oauth = validSnapshot(UUID.randomUUID(), ENDPOINT, "service-client", "client_secret_post", 10_000);
+        oauth = new EnvironmentOAuthSnapshot(
+                oauth.environmentId(), oauth.revision(), oauth.enabled(), oauth.tokenEndpoint(), oauth.clientId(),
+                oauth.clientSecret(), oauth.scopes(), "orders-api", oauth.clientAuthMethod(),
+                oauth.refreshSkewSeconds(), oauth.requestTimeoutMs());
         server.expect(once(), requestTo(ENDPOINT))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(headerDoesNotExist(HttpHeaders.AUTHORIZATION))
@@ -110,7 +119,7 @@ class ClientCredentialsOAuthTokenProviderTest {
                         "{\"access_token\":\"token-post\",\"token_type\":\"Bearer\",\"expires_in\":300}",
                         MediaType.APPLICATION_JSON));
 
-        assertThat(provider().getToken().authorizationValue()).isEqualTo("Bearer token-post");
+        assertThat(provider().getToken(oauth).authorizationValue()).isEqualTo("Bearer token-post");
         server.verify();
     }
 
@@ -121,7 +130,7 @@ class ClientCredentialsOAuthTokenProviderTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .body("secret upstream response"));
 
-        assertThatThrownBy(() -> provider().getToken())
+        assertThatThrownBy(() -> provider().getToken(oauth))
                 .isInstanceOf(OAuthTokenException.class)
                 .satisfies(error -> {
                     OAuthTokenException exception = (OAuthTokenException) error;
@@ -138,7 +147,7 @@ class ClientCredentialsOAuthTokenProviderTest {
         server.expect(once(), requestTo(ENDPOINT))
                 .andRespond(withException(new IOException("connection refused")));
 
-        assertThatThrownBy(() -> provider().getToken())
+        assertThatThrownBy(() -> provider().getToken(oauth))
                 .isInstanceOf(OAuthTokenException.class)
                 .extracting("code")
                 .isEqualTo(OAuthTokenErrorCode.OAUTH_TOKEN_ENDPOINT_UNAVAILABLE);
@@ -152,7 +161,7 @@ class ClientCredentialsOAuthTokenProviderTest {
                         "{\"access_token\":\"token-1\",\"token_type\":\"MAC\",\"expires_in\":300}",
                         MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> provider().getToken())
+        assertThatThrownBy(() -> provider().getToken(oauth))
                 .isInstanceOf(OAuthTokenException.class)
                 .extracting("code")
                 .isEqualTo(OAuthTokenErrorCode.OAUTH_TOKEN_RESPONSE_INVALID);
@@ -167,27 +176,71 @@ class ClientCredentialsOAuthTokenProviderTest {
                         MediaType.APPLICATION_JSON));
 
         ClientCredentialsOAuthTokenProvider provider = provider();
-        assertThat(provider.getToken().value()).isEqualTo("token-1");
-        provider.invalidate();
-        assertThat(provider.getToken().value()).isEqualTo("token-1");
+        assertThat(provider.getToken(oauth).value()).isEqualTo("token-1");
+        provider.invalidate(oauth.environmentId());
+        assertThat(provider.getToken(oauth).value()).isEqualTo("token-1");
+        server.verify();
+    }
+
+    @Test
+    void isolatesCachesByEnvironmentAndRevision() {
+        UUID firstId = UUID.randomUUID();
+        UUID secondId = UUID.randomUUID();
+        EnvironmentOAuthSnapshot first = validSnapshot(firstId, ENDPOINT + "-first", "first-client", "client_secret_basic", 10_000);
+        EnvironmentOAuthSnapshot second = validSnapshot(secondId, ENDPOINT + "-second", "second-client", "client_secret_basic", 10_000);
+        server.expect(once(), requestTo(ENDPOINT + "-first"))
+                .andRespond(withSuccess("{\"access_token\":\"first-token\",\"token_type\":\"Bearer\",\"expires_in\":300}", MediaType.APPLICATION_JSON));
+        server.expect(once(), requestTo(ENDPOINT + "-second"))
+                .andRespond(withSuccess("{\"access_token\":\"second-token\",\"token_type\":\"Bearer\",\"expires_in\":300}", MediaType.APPLICATION_JSON));
+
+        ClientCredentialsOAuthTokenProvider provider = provider();
+
+        assertThat(provider.getToken(first).value()).isEqualTo("first-token");
+        assertThat(provider.getToken(second).value()).isEqualTo("second-token");
+        assertThat(provider.getToken(first).value()).isEqualTo("first-token");
+        server.verify();
+    }
+
+    @Test
+    void revisionChangeForcesRefreshAndPassesEnvironmentTimeoutToFactory() {
+        java.util.concurrent.atomic.AtomicLong timeout = new java.util.concurrent.atomic.AtomicLong();
+        server.expect(times(2), requestTo(ENDPOINT))
+                .andRespond(withSuccess("{\"access_token\":\"token-1\",\"token_type\":\"Bearer\",\"expires_in\":120}", MediaType.APPLICATION_JSON));
+        EnvironmentOAuthSnapshot revised = new EnvironmentOAuthSnapshot(
+                oauth.environmentId(), oauth.revision() + 1, oauth.enabled(), oauth.tokenEndpoint(), oauth.clientId(),
+                oauth.clientSecret(), oauth.scopes(), oauth.audience(), oauth.clientAuthMethod(),
+                oauth.refreshSkewSeconds(), 2_345);
+        ClientCredentialsOAuthTokenProvider provider = new ClientCredentialsOAuthTokenProvider(
+                requestTimeoutMs -> {
+                    timeout.set(requestTimeoutMs);
+                    return restTemplate;
+                }, clock);
+
+        provider.getToken(oauth);
+        provider.getToken(revised);
+
+        assertThat(timeout).hasValue(2_345);
         server.verify();
     }
 
     private ClientCredentialsOAuthTokenProvider provider() {
-        return new ClientCredentialsOAuthTokenProvider(properties, restTemplate, clock);
+        return new ClientCredentialsOAuthTokenProvider(requestTimeoutMs -> restTemplate, clock);
     }
 
-    private OAuthProperties validProperties(String authMethod) {
-        OAuthProperties result = new OAuthProperties();
-        result.setEnabled(true);
-        result.setTokenEndpoint(ENDPOINT);
-        result.setClientId("service-client");
-        result.setClientSecret("client-secret-value");
-        result.setScopes("orders.read");
-        result.setClientAuthMethod(authMethod);
-        result.setRefreshSkewSeconds(60);
-        result.setRequestTimeoutMs(10_000);
-        return result;
+    private EnvironmentOAuthSnapshot validSnapshot(
+            UUID environmentId, String endpoint, String clientId, String authMethod, long timeoutMs) {
+        return new EnvironmentOAuthSnapshot(
+                environmentId,
+                1,
+                true,
+                endpoint,
+                clientId,
+                "client-secret-value",
+                "orders.read",
+                "",
+                authMethod,
+                60,
+                timeoutMs);
     }
 
     private static final class MutableClock extends Clock {

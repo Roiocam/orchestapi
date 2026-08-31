@@ -1,8 +1,10 @@
 package com.orchestrator.oauth;
 
+import java.util.UUID;
+
 public interface OAuthTokenProvider {
 
-    OAuthAccessToken getToken();
+    OAuthAccessToken getToken(EnvironmentOAuthSnapshot oauth);
 
-    void invalidate();
+    void invalidate(UUID environmentId);
 }

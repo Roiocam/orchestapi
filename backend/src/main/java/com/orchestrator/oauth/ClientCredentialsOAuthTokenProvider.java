@@ -3,7 +3,6 @@ package com.orchestrator.oauth;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.orchestrator.config.OAuthProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -20,96 +19,108 @@ import org.springframework.web.client.RestTemplate;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 @Slf4j
 public class ClientCredentialsOAuthTokenProvider implements OAuthTokenProvider {
 
-    private final OAuthProperties properties;
-    private final RestTemplate restTemplate;
+    private final Function<Long, RestTemplate> restTemplateFactory;
     private final Clock clock;
     private final ObjectMapper objectMapper;
-    private final Object refreshMonitor = new Object();
-    private volatile CachedToken cachedToken;
+    private final ConcurrentHashMap<UUID, CachedToken> cachedTokens = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, Object> refreshMonitors = new ConcurrentHashMap<>();
 
     public ClientCredentialsOAuthTokenProvider(
-            OAuthProperties properties, RestTemplate restTemplate, Clock clock) {
-        this(properties, restTemplate, clock, new ObjectMapper());
+            Function<Long, RestTemplate> restTemplateFactory, Clock clock) {
+        this(restTemplateFactory, clock, new ObjectMapper());
     }
 
     ClientCredentialsOAuthTokenProvider(
-            OAuthProperties properties, RestTemplate restTemplate, Clock clock, ObjectMapper objectMapper) {
-        this.properties = Objects.requireNonNull(properties, "properties");
-        this.restTemplate = Objects.requireNonNull(restTemplate, "restTemplate");
+            Function<Long, RestTemplate> restTemplateFactory, Clock clock, ObjectMapper objectMapper) {
+        this.restTemplateFactory = Objects.requireNonNull(restTemplateFactory, "restTemplateFactory");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
-        this.properties.validate();
     }
 
     @Override
-    public OAuthAccessToken getToken() {
+    public OAuthAccessToken getToken(EnvironmentOAuthSnapshot oauth) {
+        validate(oauth);
+        UUID environmentId = oauth.environmentId();
         Instant now = Instant.now(clock);
-        CachedToken current = cachedToken;
-        if (current != null && now.isBefore(current.refreshAt())) {
+        CachedToken current = cachedTokens.get(environmentId);
+        if (current != null && current.revision() == oauth.revision() && now.isBefore(current.refreshAt())) {
             return current.token();
         }
 
+        Object refreshMonitor = refreshMonitors.computeIfAbsent(environmentId, ignored -> new Object());
         synchronized (refreshMonitor) {
             now = Instant.now(clock);
-            current = cachedToken;
-            if (current != null && now.isBefore(current.refreshAt())) {
+            current = cachedTokens.get(environmentId);
+            if (current != null && current.revision() == oauth.revision() && now.isBefore(current.refreshAt())) {
                 return current.token();
             }
 
-            CachedToken refreshed = requestToken();
-            cachedToken = refreshed;
+            CachedToken refreshed = requestToken(oauth);
+            cachedTokens.put(environmentId, refreshed);
             return refreshed.token();
         }
     }
 
     @Override
-    public void invalidate() {
-        cachedToken = null;
+    public void invalidate(UUID environmentId) {
+        if (environmentId != null) {
+            cachedTokens.remove(environmentId);
+        }
     }
 
-    private CachedToken requestToken() {
-        URI endpoint = URI.create(properties.getTokenEndpoint().trim());
+    private CachedToken requestToken(EnvironmentOAuthSnapshot oauth) {
+        URI endpoint = URI.create(oauth.tokenEndpoint().trim());
         long startedAt = clock.millis();
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "client_credentials");
-        addOptionalFormValue(form, "scope", properties.getScopes());
-        addOptionalFormValue(form, "audience", properties.getAudience());
+        addOptionalFormValue(form, "scope", oauth.scopes());
+        addOptionalFormValue(form, "audience", oauth.audience());
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
         headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
-        if ("client_secret_basic".equals(properties.getClientAuthMethod())) {
+        if ("client_secret_basic".equals(oauth.clientAuthMethod())) {
             headers.setBasicAuth(
-                    properties.getClientId(), properties.getClientSecret(), StandardCharsets.UTF_8);
+                    oauth.clientId(), oauth.clientSecret(), StandardCharsets.UTF_8);
         } else {
-            form.add("client_id", properties.getClientId());
-            form.add("client_secret", properties.getClientSecret());
+            form.add("client_id", oauth.clientId());
+            form.add("client_secret", oauth.clientSecret());
         }
 
         try {
+            RestTemplate restTemplate = restTemplateFactory.apply(oauth.requestTimeoutMs());
             ResponseEntity<String> response = restTemplate.exchange(
                     endpoint,
                     HttpMethod.POST,
                     new HttpEntity<>(form, headers),
                     String.class);
-            OAuthAccessToken token = parseToken(response.getBody());
+            ParsedToken parsed = parseToken(response.getBody());
             Instant issuedAt = Instant.now(clock);
-            long expiresIn = Duration.between(issuedAt, token.expiresAt()).getSeconds();
-            Instant refreshAt = issuedAt.plusSeconds(
-                    Math.max(1, expiresIn - properties.getRefreshSkewSeconds()));
+            Instant expiresAt;
+            Instant refreshAt;
+            try {
+                expiresAt = issuedAt.plusSeconds(parsed.expiresInSeconds());
+                refreshAt = issuedAt.plusSeconds(
+                        Math.max(1, parsed.expiresInSeconds() - oauth.refreshSkewSeconds()));
+            } catch (ArithmeticException exception) {
+                throw invalidResponse();
+            }
+            OAuthAccessToken token = new OAuthAccessToken(parsed.value(), parsed.tokenType(), expiresAt);
             log.debug(
                     "OAuth token request endpointHost={} status={} durationMs={} cache=refreshed",
                     endpoint.getHost(),
                     response.getStatusCode().value(),
                     Math.max(0, clock.millis() - startedAt));
-            return new CachedToken(token, refreshAt);
+            return new CachedToken(oauth.revision(), token, refreshAt);
         } catch (OAuthTokenException exception) {
             throw exception;
         } catch (HttpStatusCodeException exception) {
@@ -138,7 +149,7 @@ public class ClientCredentialsOAuthTokenProvider implements OAuthTokenProvider {
         }
     }
 
-    private OAuthAccessToken parseToken(String responseBody) {
+    private ParsedToken parseToken(String responseBody) {
         if (responseBody == null || responseBody.isBlank()) {
             throw invalidResponse();
         }
@@ -164,14 +175,7 @@ public class ClientCredentialsOAuthTokenProvider implements OAuthTokenProvider {
         }
 
         long expiresInSeconds = expiresIn.asLong();
-        Instant issuedAt = Instant.now(clock);
-        Instant expiresAt;
-        try {
-            expiresAt = issuedAt.plusSeconds(expiresInSeconds);
-        } catch (ArithmeticException exception) {
-            throw invalidResponse();
-        }
-        return new OAuthAccessToken(accessToken.textValue(), "Bearer", expiresAt);
+        return new ParsedToken(accessToken.textValue(), "Bearer", expiresInSeconds);
     }
 
     private OAuthTokenException invalidResponse() {
@@ -187,5 +191,48 @@ public class ClientCredentialsOAuthTokenProvider implements OAuthTokenProvider {
         }
     }
 
-    private record CachedToken(OAuthAccessToken token, Instant refreshAt) {}
+    private void validate(EnvironmentOAuthSnapshot oauth) {
+        if (oauth == null || !oauth.enabled()) {
+            throw new OAuthTokenException(
+                    OAuthTokenErrorCode.OAUTH_CONFIGURATION_INVALID,
+                    "OAuth is not enabled for this environment");
+        }
+        if (oauth.tokenEndpoint().isBlank()
+                || oauth.clientId().isBlank()
+                || oauth.clientSecret().isBlank()) {
+            throw new OAuthTokenException(
+                    OAuthTokenErrorCode.OAUTH_CONFIGURATION_INVALID,
+                    "OAuth token endpoint, client id and client secret must be configured");
+        }
+        URI endpoint;
+        try {
+            endpoint = URI.create(oauth.tokenEndpoint().trim());
+        } catch (IllegalArgumentException exception) {
+            throw new OAuthTokenException(
+                    OAuthTokenErrorCode.OAUTH_CONFIGURATION_INVALID,
+                    "OAuth token endpoint must be a valid http(s) URL");
+        }
+        if (!endpoint.isAbsolute()
+                || !("http".equalsIgnoreCase(endpoint.getScheme())
+                || "https".equalsIgnoreCase(endpoint.getScheme()))) {
+            throw new OAuthTokenException(
+                    OAuthTokenErrorCode.OAUTH_CONFIGURATION_INVALID,
+                    "OAuth token endpoint must be an absolute http(s) URL");
+        }
+        if (!"client_secret_basic".equals(oauth.clientAuthMethod())
+                && !"client_secret_post".equals(oauth.clientAuthMethod())) {
+            throw new OAuthTokenException(
+                    OAuthTokenErrorCode.OAUTH_CONFIGURATION_INVALID,
+                    "OAuth client authentication method must be client_secret_basic or client_secret_post");
+        }
+        if (oauth.requestTimeoutMs() <= 0 || oauth.refreshSkewSeconds() < 0) {
+            throw new OAuthTokenException(
+                    OAuthTokenErrorCode.OAUTH_CONFIGURATION_INVALID,
+                    "OAuth request timeout and refresh skew must be valid positive values");
+        }
+    }
+
+    private record ParsedToken(String value, String tokenType, long expiresInSeconds) {}
+
+    private record CachedToken(long revision, OAuthAccessToken token, Instant refreshAt) {}
 }

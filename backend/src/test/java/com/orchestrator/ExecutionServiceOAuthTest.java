@@ -1,9 +1,10 @@
 package com.orchestrator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.orchestrator.config.OAuthProperties;
 import com.orchestrator.dto.StepExecutionResult;
 import com.orchestrator.dto.SuiteExecutionResult;
+import com.orchestrator.model.Environment;
+import com.orchestrator.model.EnvironmentOAuthConfig;
 import com.orchestrator.model.HttpMethod;
 import com.orchestrator.model.TestStep;
 import com.orchestrator.model.TestSuite;
@@ -14,6 +15,7 @@ import com.orchestrator.repository.EnvironmentRepository;
 import com.orchestrator.repository.TestStepRepository;
 import com.orchestrator.repository.TestSuiteRepository;
 import com.orchestrator.oauth.DefaultOAuthRequestAuthorizer;
+import com.orchestrator.oauth.EnvironmentOAuthSnapshot;
 import com.orchestrator.oauth.OAuthTokenErrorCode;
 import com.orchestrator.oauth.OAuthTokenException;
 import com.orchestrator.oauth.OAuthTokenProvider;
@@ -50,23 +52,39 @@ class ExecutionServiceOAuthTest {
 
     private UUID suiteId;
     private UUID stepId;
+    private UUID environmentId;
     private TestSuite suite;
     private TestStep step;
+    private Environment environment;
     private TestStepRepository stepRepo;
     private TestSuiteRepository suiteRepo;
     private EnvironmentRepository envRepo;
     private RestTemplate restTemplate;
     private OAuthTokenProvider provider;
-    private OAuthProperties properties;
     private ExecutionService executionService;
 
     @BeforeEach
     void setUp() {
         suiteId = UUID.randomUUID();
         stepId = UUID.randomUUID();
+        environmentId = UUID.randomUUID();
         suite = TestSuite.builder().id(suiteId).name("oauth-suite").description("").build();
+        suite.setDefaultEnvironmentId(environmentId);
         step = baseStep();
         step.setSuite(suite);
+
+        EnvironmentOAuthConfig oauthConfig = EnvironmentOAuthConfig.disabled(environmentId);
+        oauthConfig.setEnabled(true);
+        oauthConfig.setTokenEndpoint("https://idp.example.test/oauth/token");
+        oauthConfig.setClientId("service-client");
+        oauthConfig.setClientSecret("client-secret");
+        environment = Environment.builder()
+                .id(environmentId)
+                .name("oauth-env")
+                .baseUrl("https://api.example.test")
+                .oauthConfig(oauthConfig)
+                .build();
+        oauthConfig.setEnvironment(environment);
 
         stepRepo = mock(TestStepRepository.class);
         suiteRepo = mock(TestSuiteRepository.class);
@@ -77,14 +95,14 @@ class ExecutionServiceOAuthTest {
         VerificationService verificationService = mock(VerificationService.class);
         ResponseValidationService responseValidationService = mock(ResponseValidationService.class);
         provider = mock(OAuthTokenProvider.class);
-        properties = new OAuthProperties();
-        properties.setEnabled(true);
-        DefaultOAuthRequestAuthorizer authorizer = new DefaultOAuthRequestAuthorizer(properties, provider);
+        DefaultOAuthRequestAuthorizer authorizer = new DefaultOAuthRequestAuthorizer(provider);
 
         when(suiteRepo.findById(suiteId)).thenReturn(Optional.of(suite));
         when(stepRepo.findBySuiteIdWithDetails(suiteId)).thenReturn(List.of(step));
         when(stepRepo.findBySuiteIdWithVerifications(suiteId)).thenReturn(List.of(step));
         when(stepRepo.findBySuiteIdWithResponseValidations(suiteId)).thenReturn(List.of(step));
+        when(envRepo.findByIdWithDetails(environmentId)).thenReturn(Optional.of(environment));
+        when(envRepo.findByIdWithConnectors(environmentId)).thenReturn(Optional.of(environment));
         doReturn(Collections.emptyMap()).when(verificationService)
                 .startPreListeners(any(), any(), any(), any());
         when(targetRestTemplate.exchange(
@@ -106,7 +124,7 @@ class ExecutionServiceOAuthTest {
 
     @Test
     void sendsAutomaticBearerTokenToTargetAndRedactsResultHeaders() {
-        when(provider.getToken()).thenReturn(
+        when(provider.getToken(any(EnvironmentOAuthSnapshot.class))).thenReturn(
                 new com.orchestrator.oauth.OAuthAccessToken(
                         "token-1", "Bearer", java.time.Instant.parse("2030-01-01T00:05:00Z")));
 
@@ -139,7 +157,7 @@ class ExecutionServiceOAuthTest {
 
     @Test
     void tokenFailureReturnsSafeErrorWithoutCallingTarget() {
-        when(provider.getToken()).thenThrow(new OAuthTokenException(
+        when(provider.getToken(any(EnvironmentOAuthSnapshot.class))).thenThrow(new OAuthTokenException(
                 OAuthTokenErrorCode.OAUTH_TOKEN_ENDPOINT_UNAVAILABLE,
                 "OAuth token endpoint is unavailable"));
 

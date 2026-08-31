@@ -5,7 +5,7 @@ import org.springframework.http.HttpHeaders;
 
 public interface OAuthRequestAuthorizer {
 
-    void apply(TestStep step, HttpHeaders headers);
+    void apply(TestStep step, EnvironmentOAuthSnapshot oauth, HttpHeaders headers);
 
-    void applyPreview(TestStep step, HttpHeaders headers);
+    void applyPreview(TestStep step, EnvironmentOAuthSnapshot oauth, HttpHeaders headers);
 }
