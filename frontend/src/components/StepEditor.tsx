@@ -8,7 +8,6 @@ import {
   InputNumber,
   Table,
   Popconfirm,
-  Space,
   Checkbox,
   Badge,
   message,
@@ -879,32 +878,30 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
   // Render
   // ====================
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div className="request-editor">
       {/* ===== REQUEST BAR (Postman-style) ===== */}
-      <div style={{ padding: '12px 0 8px', borderBottom: '1px solid #f0f0f0' }}>
-        <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
+      <div style={{ padding: '4px 0 10px' }}>
+        <div className="request-editor-meta">
           <Input
             placeholder="Step name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            size="small"
-            style={{ fontWeight: 500, flex: 1 }}
+            style={{ fontWeight: 560, flex: 1 }}
           />
           <Input
             placeholder="Group (optional)"
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
-            size="small"
-            style={{ width: 160 }}
+            style={{ width: 168 }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
+        <div className="request-editor-bar">
           <Select
+            className="request-editor-method"
             showSearch
             value={method}
             onChange={(val) => setMethod(val)}
-            size="middle"
-            style={{ width: 110, flexShrink: 0 }}
+            style={{ width: 112, flexShrink: 0 }}
             filterOption={(input, option) =>
               (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
             }
@@ -914,9 +911,9 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
               ),
               value: opt.value,
             }))}
-            dropdownStyle={{ minWidth: 110 }}
+            dropdownStyle={{ minWidth: 112 }}
           />
-          <div style={{ flex: 1, marginLeft: -1 }}>
+          <div className="request-editor-url">
             <PlaceholderInput
               placeholder="Enter request URL — e.g. /api/users/${userId} or /posts/{{step.id}}"
               value={url}
@@ -927,43 +924,41 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             />
           </div>
         </div>
-        <div style={{ marginTop: 6 }}>
-          <Space size={16}>
-            <Space size={4}>
-              <Switch size="small" checked={dependencyOnly} onChange={setDependencyOnly} />
-              <span style={{ color: '#8c8c8c', fontSize: 11 }}>Dependency only</span>
-            </Space>
-            <Space size={4}>
-              <Switch size="small" checked={cacheable} onChange={(checked) => setCacheable(checked)} />
-              <span style={{ color: '#8c8c8c', fontSize: 11 }}>Cacheable</span>
-            </Space>
-            {cacheable && (
-              <Space size={4}>
-                <span style={{ color: '#8c8c8c', fontSize: 11 }}>TTL:</span>
-                <InputNumber
-                  value={cacheTtlSeconds}
-                  onChange={(val) => setCacheTtlSeconds(val ?? 0)}
-                  min={0}
-                  placeholder="0 = entire run"
-                  size="small"
-                  style={{ width: 120 }}
-                />
-              </Space>
-            )}
-            <Space size={4}>
-              <span style={{ color: '#8c8c8c', fontSize: 11 }}>OAuth:</span>
-              <Select
+        <div className="request-editor-options">
+          <label className="request-editor-option">
+            <Switch size="small" checked={dependencyOnly} onChange={setDependencyOnly} />
+            Dependency only
+          </label>
+          <label className="request-editor-option">
+            <Switch size="small" checked={cacheable} onChange={(checked) => setCacheable(checked)} />
+            Cacheable
+          </label>
+          {cacheable && (
+            <label className="request-editor-option">
+              TTL
+              <InputNumber
+                value={cacheTtlSeconds}
+                onChange={(val) => setCacheTtlSeconds(val ?? 0)}
+                min={0}
+                placeholder="0 = entire run"
                 size="small"
-                value={oauthMode}
-                onChange={setOauthMode}
-                options={[
-                  { label: 'Inherit deployment OAuth', value: 'INHERIT' },
-                  { label: 'Disable automatic OAuth', value: 'DISABLED' },
-                ]}
-                style={{ width: 190 }}
+                style={{ width: 120 }}
               />
-            </Space>
-          </Space>
+            </label>
+          )}
+          <label className="request-editor-option">
+            OAuth
+            <Select
+              size="small"
+              value={oauthMode}
+              onChange={setOauthMode}
+              options={[
+                { label: 'Inherit deployment OAuth', value: 'INHERIT' },
+                { label: 'Disable automatic OAuth', value: 'DISABLED' },
+              ]}
+              style={{ width: 200 }}
+            />
+          </label>
         </div>
       </div>
 
@@ -1620,10 +1615,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       />
 
       {/* ===== SAVE / CANCEL ===== */}
-      <div style={{ padding: '8px 0', display: 'flex', gap: 8, justifyContent: 'flex-end', borderTop: '1px solid #f0f0f0' }}>
+      <div className="step-editor-footer">
         <Button onClick={onCancel}>Cancel</Button>
         <Button type="primary" onClick={handleSave} loading={saving}>
-          Save
+          Save step
         </Button>
       </div>
     </div>

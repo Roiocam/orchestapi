@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-# OrchestAPI internal deployment entrypoint.
+# OrchestAPI Starbucks internal deployment entrypoint.
 #
-# Build ownership is deliberately split: Node/npm and Maven run on the host
-# (or CI), while Docker only packages the resulting Spring Boot JAR into a
-# Starbucks internal runtime image.
+# Build ownership stays split: Node/npm + Maven run on the host (or CI),
+# Docker only packages the resulting Spring Boot JAR. Default release path
+# builds, pushes, and can apply the stg Deployment (agent-session style).
 
 set -euo pipefail
 
@@ -21,21 +21,29 @@ VITE_BASE_PATH="${VITE_BASE_PATH:-/orchestapi/}"
 IMAGE_TAG="${IMAGE_TAG:-}"
 IMAGE_PLATFORM="${IMAGE_PLATFORM:-linux/amd64}"
 MAVEN_BIN="${MAVEN_BIN:-}"
-K8S_NAMESPACE="${K8S_NAMESPACE:-orchestapi-internal}"
+
+# Match the live Starbucks stg Deployment (container name is c0).
+K8S_NAMESPACE="${K8S_NAMESPACE:-developer-portal-stg}"
 K8S_DEPLOYMENT="${K8S_DEPLOYMENT:-orchestapi}"
-K8S_CONTAINER="${K8S_CONTAINER:-orchestapi}"
+K8S_CONTAINER="${K8S_CONTAINER:-c0}"
 
 SKIP_INSTALL="${SKIP_INSTALL:-false}"
 SKIP_TESTS="${SKIP_TESTS:-true}"
-PUSH_IMAGE="${PUSH_IMAGE:-false}"
+# Default release path pushes the image (use --no-push / --jar-only to opt out).
+PUSH_IMAGE="${PUSH_IMAGE:-true}"
 APPLY_K8S="${APPLY_K8S:-false}"
 BUILD_IMAGE="${BUILD_IMAGE:-true}"
 DRY_RUN="false"
 FRONTEND_CLEAN="false"
+TAG_PROVIDED="false"
 
 die() {
   echo "ERROR: $*" >&2
   exit 1
+}
+
+generate_version() {
+  date +%Y%m%d-%H%M%S
 }
 
 show_help() {
@@ -43,12 +51,19 @@ show_help() {
 OrchestAPI Starbucks 内部部署脚本
 
 用法:
+  ./deploy.sh                              # 交互：自动生成版本号，询问是否 kubectl 更新
+  ./deploy.sh --skip-install --apply-k8s   # 无 tag 时同样自动生成版本号
   ./deploy.sh <image-tag> [options]
 
-默认流程:
-  1. 在本机执行前端 npm 构建（VITE_BASE_PATH=/orchestapi/）
-  2. 在本机执行 Maven clean package，并把前端 dist 复制进 JAR
-  3. 用 Docker 仅将已生成的 JAR 封装进 Starbucks 内部 Java 运行时镜像
+默认流程（与 agent-session 一致）:
+  1. 本机 npm 构建前端（VITE_BASE_PATH=/orchestapi/）
+  2. 本机 Maven package，把 frontend/dist 打进 JAR
+  3. Docker 构建 runtime 镜像
+  4. docker push 到 Starbucks 内部仓库
+  5. 打印 kubectl set image；加 --apply-k8s 时直接更新 Deployment
+
+默认 Kubernetes 目标:
+  namespace=developer-portal-stg  deployment=orchestapi  container=c0
 
 选项:
   -h, --help                 显示帮助
@@ -56,31 +71,31 @@ OrchestAPI Starbucks 内部部署脚本
   --skip-install             跳过 npm ci
   --clean-frontend           构建前删除 frontend/dist
   --test                     Maven 构建时执行测试（默认跳过测试）
-  --jar-only                 只构建本地 JAR，不构建运行时镜像
-  --push                     构建后 push 镜像
-  --apply-k8s                执行 kubectl set image 更新 Deployment
+  --jar-only                 只构建本地 JAR（不构建/推送镜像，不更新 k8s）
+  --push                     构建后 push 镜像（默认已开启，可显式写出）
+  --no-push                  只构建本地镜像，不 push
+  --apply-k8s                push 后执行 kubectl set image 并等待 rollout
   --image-repository REPO    完整镜像仓库路径
-  --image-prefix PREFIX      镜像仓库前缀（默认 Starbucks 内部仓库）
+  --image-prefix PREFIX      镜像仓库前缀
   --image-name NAME          镜像名（默认 orchestapi）
   --image-tag TAG            镜像 tag；也可用第一个位置参数
   --runtime-image IMAGE      Docker runtime FROM 镜像
-  --platform PLATFORM        Docker 构建平台（默认 linux/amd64，可覆盖）
-  --namespace NS              Kubernetes namespace
-  --deployment NAME           Kubernetes Deployment 名称
-  --container NAME            Kubernetes container 名称
+  --platform PLATFORM        Docker 构建平台（默认 linux/amd64）
+  --namespace NS             Kubernetes namespace（默认 developer-portal-stg）
+  --deployment NAME          Kubernetes Deployment 名称（默认 orchestapi）
+  --container NAME           Kubernetes container 名称（默认 c0）
 
 环境变量:
   IMAGE_REPOSITORY, IMAGE_REGISTRY_PREFIX, IMAGE_NAME, IMAGE_TAG
-  RUNTIME_IMAGE, VITE_BASE_PATH, IMAGE_PLATFORM
-  MAVEN_BIN
+  RUNTIME_IMAGE, VITE_BASE_PATH, IMAGE_PLATFORM, MAVEN_BIN
   SKIP_INSTALL, SKIP_TESTS, PUSH_IMAGE, APPLY_K8S
   K8S_NAMESPACE, K8S_DEPLOYMENT, K8S_CONTAINER
 
 示例:
-  ./deploy.sh 20260831-01
-  ./deploy.sh 20260831-01 --test --push
+  ./deploy.sh
+  ./deploy.sh 20260831-211800 --skip-install --apply-k8s
+  ./deploy.sh 20260831-01 --skip-install --no-push
   ./deploy.sh 20260831-01 --jar-only
-  RUNTIME_IMAGE=<approved-starbucks-java-image> ./deploy.sh 20260831-01 --push
 EOF
 }
 
@@ -133,8 +148,22 @@ require_java_21() {
   [[ "$java_major" == "21" ]] || die "需要 Java 21 构建，当前检测到 Java ${java_major:-unknown}；请设置 JAVA_HOME"
 }
 
+prompt_apply_k8s() {
+  local answer=""
+  echo ""
+  read -r -p "推送镜像后是否执行 kubectl 更新部署 (${K8S_NAMESPACE}/${K8S_DEPLOYMENT})? [y/N]: " answer
+  case "$answer" in
+    y|Y|yes|YES)
+      APPLY_K8S="true"
+      ;;
+  esac
+}
+
 parse_args() {
   local positional_tag=""
+  local push_flag_set="false"
+  local apply_flag_set="false"
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -h|--help)
@@ -159,18 +188,25 @@ parse_args() {
         ;;
       --jar-only)
         BUILD_IMAGE="false"
+        PUSH_IMAGE="false"
+        APPLY_K8S="false"
+        push_flag_set="true"
+        apply_flag_set="true"
         shift
         ;;
       --push)
         PUSH_IMAGE="true"
+        push_flag_set="true"
         shift
         ;;
       --no-push)
         PUSH_IMAGE="false"
+        push_flag_set="true"
         shift
         ;;
       --apply-k8s)
         APPLY_K8S="true"
+        apply_flag_set="true"
         shift
         ;;
       --image-repository)
@@ -193,6 +229,7 @@ parse_args() {
       --image-tag)
         [[ $# -ge 2 ]] || die "--image-tag 缺少参数"
         IMAGE_TAG="$2"
+        TAG_PROVIDED="true"
         shift 2
         ;;
       --runtime-image)
@@ -225,6 +262,7 @@ parse_args() {
         while [[ $# -gt 0 ]]; do
           [[ -z "$positional_tag" ]] || die "只能指定一个 image tag"
           positional_tag="$1"
+          TAG_PROVIDED="true"
           shift
         done
         ;;
@@ -234,6 +272,7 @@ parse_args() {
       *)
         [[ -z "$positional_tag" ]] || die "只能指定一个 image tag"
         positional_tag="$1"
+        TAG_PROVIDED="true"
         shift
         ;;
     esac
@@ -247,14 +286,23 @@ parse_args() {
     if [[ "$DRY_RUN" == "true" ]]; then
       IMAGE_TAG="dry-run"
     else
-      IMAGE_TAG="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
-      [[ -n "$IMAGE_TAG" ]] || IMAGE_TAG="dev"
+      IMAGE_TAG="$(generate_version)"
     fi
   fi
 
   VITE_BASE_PATH="$(normalize_base_path "$VITE_BASE_PATH")"
-  [[ "$BUILD_IMAGE" == "true" || "$PUSH_IMAGE" == "false" ]] || die "--push 不能与 --jar-only 同时使用"
-  [[ "$BUILD_IMAGE" == "true" || "$APPLY_K8S" == "false" ]] || die "--apply-k8s 需要先构建 runtime image"
+
+  if [[ "$BUILD_IMAGE" != "true" ]]; then
+    PUSH_IMAGE="false"
+    APPLY_K8S="false"
+  fi
+
+  [[ "$BUILD_IMAGE" == "true" || "$push_flag_set" != "true" || "$PUSH_IMAGE" == "false" ]] \
+    || die "--push 不能与 --jar-only 同时使用"
+  [[ "$BUILD_IMAGE" == "true" || "$apply_flag_set" != "true" || "$APPLY_K8S" == "false" ]] \
+    || die "--apply-k8s 需要先构建 runtime image"
+  [[ "$PUSH_IMAGE" == "true" || "$APPLY_K8S" == "false" ]] \
+    || die "--apply-k8s 需要先 push 镜像（去掉 --no-push）"
 }
 
 build_frontend() {
@@ -332,6 +380,8 @@ build_runtime_image() {
 
   local vcs_ref
   local -a docker_args
+  local image_ref="${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+
   if [[ "$DRY_RUN" == "true" ]]; then
     vcs_ref="dry-run"
   else
@@ -348,36 +398,71 @@ build_runtime_image() {
     --build-arg "JAR_FILE=$JAR_RELATIVE_PATH"
     --build-arg "APP_VERSION=$IMAGE_TAG"
     --build-arg "VCS_REF=$vcs_ref"
-    --tag "${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+    --tag "$image_ref"
     "$ROOT_DIR"
   )
 
   echo "Runtime image: docker build (FROM $RUNTIME_IMAGE)"
   run_cmd docker "${docker_args[@]}"
+  echo "Image built: $image_ref"
 
   if [[ "$PUSH_IMAGE" == "true" ]]; then
     require_command docker
-    run_cmd docker push "${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+    echo "Pushing image: $image_ref"
+    run_cmd docker push "$image_ref"
+    echo "Image pushed: $image_ref"
   fi
 }
 
+print_kubernetes_command() {
+  local image_ref="${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+  local -a kubectl_args
+  kubectl_args=(kubectl -n "$K8S_NAMESPACE" set image "deployment/$K8S_DEPLOYMENT" "$K8S_CONTAINER=$image_ref")
+  echo "Kubernetes update command:"
+  echo "${kubectl_args[*]}"
+}
+
 update_kubernetes() {
-  if [[ "$APPLY_K8S" != "true" ]]; then
+  if [[ "$BUILD_IMAGE" != "true" || "$PUSH_IMAGE" != "true" ]]; then
     return 0
   fi
+
+  print_kubernetes_command
+
+  if [[ "$APPLY_K8S" != "true" ]]; then
+    echo "跳过 kubectl 更新（需要时加 --apply-k8s，或在交互模式选择 y）"
+    return 0
+  fi
+
   require_command kubectl
   local image_ref="${IMAGE_REPOSITORY}:${IMAGE_TAG}"
   local -a kubectl_args
   kubectl_args=(kubectl -n "$K8S_NAMESPACE" set image "deployment/$K8S_DEPLOYMENT" "$K8S_CONTAINER=$image_ref")
-  echo "Kubernetes update command: ${kubectl_args[*]}"
+  echo "Applying Kubernetes image update..."
   run_cmd "${kubectl_args[@]}"
+  run_cmd kubectl -n "$K8S_NAMESPACE" rollout status "deployment/$K8S_DEPLOYMENT" --timeout=180s
+  echo "Deployment updated: ${K8S_NAMESPACE}/${K8S_DEPLOYMENT} -> ${image_ref}"
 }
 
 main() {
   parse_args "$@"
 
+  # No explicit tag + TTY: agent-session style interactive apply prompt.
+  if [[ "$TAG_PROVIDED" == "false" && "$DRY_RUN" != "true" && "$APPLY_K8S" != "true" ]]; then
+    if [[ -t 0 ]]; then
+      echo "自动生成版本号: $IMAGE_TAG"
+      echo "目标镜像: ${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+      echo "K8s: ${K8S_NAMESPACE}/${K8S_DEPLOYMENT} (container=${K8S_CONTAINER})"
+      prompt_apply_k8s
+    fi
+  elif [[ "$TAG_PROVIDED" == "false" && "$DRY_RUN" != "true" ]]; then
+    echo "自动生成版本号: $IMAGE_TAG"
+  fi
+
   if [[ "$DRY_RUN" == "true" ]]; then
-    echo "Dry run: image=${IMAGE_REPOSITORY}:${IMAGE_TAG} runtime=$RUNTIME_IMAGE"
+    echo "Dry run: image=${IMAGE_REPOSITORY}:${IMAGE_TAG} runtime=$RUNTIME_IMAGE push=$PUSH_IMAGE apply=$APPLY_K8S"
+  else
+    echo "Deploy plan: image=${IMAGE_REPOSITORY}:${IMAGE_TAG} push=$PUSH_IMAGE apply-k8s=$APPLY_K8S"
   fi
 
   require_java_21

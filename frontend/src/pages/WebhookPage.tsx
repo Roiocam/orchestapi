@@ -755,29 +755,40 @@ function WebhookListView() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button type="primary" icon={<PlusOutlined />} size="small" onClick={openCreate}>
-          New Webhook
-        </Button>
+      <div className="page-header">
+        <div className="page-header-copy">
+          <div className="page-header-kicker">Tools</div>
+          <h1 className="page-header-title">Webhooks</h1>
+          <p className="page-header-desc">
+            Capture inbound callbacks and inspect payloads while suites run.
+          </p>
+        </div>
+        <div className="page-header-actions">
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            New Webhook
+          </Button>
+        </div>
       </div>
 
-      <Table
-        rowKey="id"
-        dataSource={webhooks}
-        columns={columns}
-        loading={loading}
-        size="small"
-        onChange={handleTableChange}
-        pagination={{
-          current: page + 1,
-          pageSize: 10,
-          total,
-          onChange: (p) => setPage(p - 1),
-          showSizeChanger: false,
-          showTotal: (t) => `${t} total`,
-          size: 'small',
-        }}
-      />
+      <div className="product-panel">
+        <Table
+          rowKey="id"
+          dataSource={webhooks}
+          columns={columns}
+          loading={loading}
+          size="small"
+          onChange={handleTableChange}
+          pagination={{
+            current: page + 1,
+            pageSize: 10,
+            total,
+            onChange: (p) => setPage(p - 1),
+            showSizeChanger: false,
+            showTotal: (t) => `${t} total`,
+            size: 'small',
+          }}
+        />
+      </div>
 
       <Modal
         title={editWebhook ? 'Edit Webhook' : 'New Webhook'}
@@ -788,21 +799,44 @@ function WebhookListView() {
         okText={editWebhook ? 'Save' : 'Create'}
         width={520}
       >
-        <Form form={form} layout="vertical" size="small" style={{ marginTop: 16 }}>
-          <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
-            <Input placeholder="e.g. Payment Callback" />
+        <Form form={form} layout="vertical" requiredMark="optional">
+          <Form.Item
+            name="name"
+            label="Name"
+            rules={[{ required: true, message: 'Name is required' }]}
+            extra="Used in the list and when referencing this endpoint."
+          >
+            <Input placeholder="e.g. Payment Callback" autoFocus />
           </Form.Item>
-          <Form.Item name="description" label="Description">
-            <Input.TextArea rows={2} placeholder="Optional description" />
+          <Form.Item name="description" label="Description" extra="Optional context for teammates.">
+            <Input.TextArea
+              rows={2}
+              placeholder="What system calls this webhook?"
+              autoSize={{ minRows: 2, maxRows: 4 }}
+            />
           </Form.Item>
-          <Form.Item name="defaultResponseStatus" label="Default Response Status">
-            <InputNumber min={100} max={599} style={{ width: 120 }} />
-          </Form.Item>
-          <Form.Item name="defaultResponseBody" label="Default Response Body">
-            <Input.TextArea rows={3} placeholder='e.g. {"status":"ok"}' style={{ fontFamily: 'monospace', fontSize: 12 }} />
-          </Form.Item>
+          <div className="form-grid-2">
+            <Form.Item
+              name="defaultResponseStatus"
+              label="Default Response Status"
+              extra="Returned when no rule matches."
+            >
+              <InputNumber min={100} max={599} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item
+              className="form-span-2"
+              name="defaultResponseBody"
+              label="Default Response Body"
+            >
+              <Input.TextArea
+                rows={3}
+                placeholder='e.g. {"status":"ok"}'
+                style={{ fontFamily: 'monospace', fontSize: 12 }}
+              />
+            </Form.Item>
+          </div>
           <div style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 12 }}>Response Headers</Text>
+            <Text style={{ fontSize: 12, fontWeight: 560, color: '#475569' }}>Response Headers</Text>
           </div>
           <KeyValueEditor value={modalHeaders} onChange={setModalHeaders} />
         </Form>

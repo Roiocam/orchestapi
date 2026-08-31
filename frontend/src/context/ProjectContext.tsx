@@ -29,6 +29,9 @@ interface ProjectContextValue {
   effectiveCollectionId: string | null
   refreshProjects: () => Promise<void>
   refreshCollections: () => Promise<void>
+  /** Bump to reload the suite explorer tree */
+  suiteTreeVersion: number
+  bumpSuiteTree: () => void
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null)
@@ -45,6 +48,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     return stored
   })
   const [loading, setLoading] = useState(true)
+  const [suiteTreeVersion, setSuiteTreeVersion] = useState(0)
+
+  const bumpSuiteTree = useCallback(() => {
+    setSuiteTreeVersion((v) => v + 1)
+  }, [])
 
   const refreshProjects = useCallback(async () => {
     const list = await projectApi.list()
@@ -156,6 +164,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       effectiveCollectionId,
       refreshProjects,
       refreshCollections,
+      suiteTreeVersion,
+      bumpSuiteTree,
     }),
     [
       projects,
@@ -168,6 +178,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       effectiveCollectionId,
       refreshProjects,
       refreshCollections,
+      suiteTreeVersion,
+      bumpSuiteTree,
     ],
   )
 

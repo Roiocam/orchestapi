@@ -781,51 +781,64 @@ export default function EnvironmentDetailPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Space>
+      <div className="page-header">
+        <div className="suite-detail-title-wrap">
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/environments')} />
-          <Title level={5} className="page-title">
-            {isNew ? 'New Environment' : 'Edit Environment'}
-          </Title>
-        </Space>
-        <Tooltip title={hasDuplicates ? 'Fix duplicate keys before saving' : (showErrors && hasEmptyFields) ? 'Fill in all required fields' : undefined}>
-          <Button
-            type="primary"
-            icon={<SaveOutlined />}
-            onClick={handleSave}
-            loading={saving}
-            disabled={hasDuplicates || (showErrors && hasEmptyFields)}
-          >
-            Save
-          </Button>
-        </Tooltip>
+          <div className="page-header-copy">
+            <div className="page-header-kicker">{isNew ? 'Create environment' : 'Environment'}</div>
+            <Title level={4} className="page-header-title" style={{ fontSize: 18 }}>
+              {isNew ? 'New Environment' : 'Edit Environment'}
+            </Title>
+          </div>
+        </div>
+        <div className="page-header-actions">
+          <Tooltip title={hasDuplicates ? 'Fix duplicate keys before saving' : (showErrors && hasEmptyFields) ? 'Fill in all required fields' : undefined}>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={handleSave}
+              loading={saving}
+              disabled={hasDuplicates || (showErrors && hasEmptyFields)}
+            >
+              Save environment
+            </Button>
+          </Tooltip>
+        </div>
       </div>
 
-      <Card size="small" className="brand-card card-env" style={{ marginBottom: 12 }}>
-        <Form form={form} layout="vertical" size="small">
-          <div style={{ display: 'flex', gap: 12 }}>
-            <Form.Item
-              name="name"
-              label="Name"
-              rules={[{ required: true, message: 'Name is required' }]}
-              style={{ flex: 1 }}
-            >
-              <Input placeholder="e.g. DEV, QA, STAGING" />
-            </Form.Item>
-            <Form.Item
-              name="baseUrl"
-              label="Base URL"
-              rules={[
-                { required: true, message: 'Base URL is required' },
-                { pattern: /^https?:\/\//, message: 'Must start with http:// or https://' },
-              ]}
-              style={{ flex: 2 }}
-            >
-              <Input placeholder="e.g. https://api-dev.example.com" />
-            </Form.Item>
+      <div className="product-panel" style={{ marginBottom: 14 }}>
+        <div className="product-panel-header">
+          <div>
+            <div className="product-panel-title">Basics</div>
+            <div className="product-panel-subtitle">Name and base URL for this runtime target.</div>
           </div>
-        </Form>
-      </Card>
+        </div>
+        <div className="product-panel-body">
+          <Form form={form} layout="vertical" requiredMark="optional">
+            <div className="form-grid-2">
+              <Form.Item
+                name="name"
+                label="Name"
+                rules={[{ required: true, message: 'Name is required' }]}
+                extra="Short label like DEV or STAGING."
+              >
+                <Input placeholder="e.g. DEV, QA, STAGING" autoFocus={isNew} />
+              </Form.Item>
+              <Form.Item
+                name="baseUrl"
+                label="Base URL"
+                rules={[
+                  { required: true, message: 'Base URL is required' },
+                  { pattern: /^https?:\/\//, message: 'Must start with http:// or https://' },
+                ]}
+                extra="Request URLs resolve relative to this host."
+              >
+                <Input placeholder="e.g. https://api-dev.example.com" />
+              </Form.Item>
+            </div>
+          </Form>
+        </div>
+      </div>
 
       <Card
         size="small"
@@ -953,6 +966,7 @@ export default function EnvironmentDetailPage() {
 
       <Card
         size="small"
+        className="brand-card card-env"
         title="Variables"
         extra={
           <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addVariable}>
@@ -973,6 +987,7 @@ export default function EnvironmentDetailPage() {
 
       <Card
         size="small"
+        className="brand-card card-env"
         title="Default Headers"
         extra={
           <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addHeader}>

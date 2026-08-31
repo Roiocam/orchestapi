@@ -637,6 +637,15 @@ export default function RunsPage() {
   // ──── Render ────
   return (
     <div>
+      <div className="page-header">
+        <div className="page-header-copy">
+          <div className="page-header-kicker">Execution</div>
+          <h1 className="page-header-title">Runs</h1>
+          <p className="page-header-desc">
+            History of suite executions and schedules that trigger them.
+          </p>
+        </div>
+      </div>
       <Tabs
         defaultActiveKey="history"
         items={[

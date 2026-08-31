@@ -81,7 +81,7 @@ export default function TestSuiteDetailPage() {
   const navigate = useNavigate()
   const [form] = Form.useForm()
   const isNew = id === 'new'
-  const { collections, effectiveCollectionId, projectId } = useProjectContext()
+  const { collections, effectiveCollectionId, projectId, bumpSuiteTree, refreshCollections } = useProjectContext()
 
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -213,12 +213,15 @@ export default function TestSuiteDetailPage() {
       if (isNew) {
         const created = await testSuiteApi.create(request)
         message.success('Test suite created')
+        bumpSuiteTree()
+        await refreshCollections()
         navigate(`/test-suites/${created.id}`, { replace: true })
       } else {
         await testSuiteApi.update(id!, request)
         setSuiteName(request.name)
         setMetaOpen(false)
         message.success('Test suite updated')
+        bumpSuiteTree()
       }
     } catch (err: unknown) {
       // Ant Design form validation errors have errorFields — just let the form highlight them
@@ -520,13 +523,15 @@ export default function TestSuiteDetailPage() {
 
   return (
     <div>
-      {/* Header bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <Space>
+      <div className="suite-detail-header">
+        <div className="suite-detail-title-wrap">
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/test-suites')} />
-          <Title level={5} className="page-title">
-            {isNew ? 'New Test Suite' : suiteName || 'Test Suite'}
-          </Title>
+          <div>
+            <div className="page-header-kicker">{isNew ? 'Create suite' : 'Test suite'}</div>
+            <Title level={4} className="page-header-title" style={{ fontSize: 18 }}>
+              {isNew ? 'New Test Suite' : suiteName || 'Test Suite'}
+            </Title>
+          </div>
           {!isNew && (
             <Button
               type="text"
@@ -536,10 +541,11 @@ export default function TestSuiteDetailPage() {
               title="Edit suite settings"
             />
           )}
-        </Space>
+        </div>
         {!isNew && (
           <Space>
             <Button
+              type="primary"
               icon={<PlayCircleOutlined />}
               onClick={() => openRunModal(null)}
               loading={running}
@@ -560,68 +566,95 @@ export default function TestSuiteDetailPage() {
         )}
       </div>
 
-      {/* Suite metadata — collapsible, collapsed by default for existing suites */}
-      <Card size="small" className="brand-card card-suite" style={{ marginBottom: 12, display: (isNew || metaOpen) ? undefined : 'none' }} styles={{ body: { padding: '16px 20px' } }}>
-          <Form form={form} layout="vertical" size="small">
-            <Form.Item
-              name="name"
-              label="Name"
-              rules={[{ required: true, message: 'Name is required' }]}
-              style={{ marginBottom: 12 }}
-            >
-              <Input placeholder="e.g. Login Flow, Checkout Suite" />
-            </Form.Item>
-            <Form.Item name="description" label="Description" style={{ marginBottom: 12 }}>
-              <Input.TextArea rows={2} placeholder="Optional description" autoSize={{ minRows: 1, maxRows: 3 }} />
-            </Form.Item>
-            <Form.Item
-              name="collectionId"
-              label="Collection"
-              rules={[{ required: true, message: 'Collection is required' }]}
-              initialValue={effectiveCollectionId ?? undefined}
-              style={{ marginBottom: 12 }}
-            >
-              <Select
-                placeholder={projectId ? 'Select collection' : 'Select a project first'}
-                options={collections.map((c) => ({ value: c.id, label: c.name }))}
-                disabled={!projectId || collections.length === 0}
-              />
-            </Form.Item>
-            <Form.Item name="defaultEnvironmentId" label="Default Environment" style={{ marginBottom: 0 }}>
-              <Select
-                showSearch
-                allowClear
-                placeholder="Select an environment"
-                options={environments}
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                onChange={(val) => {
-                  if (val) loadEnvVars(val)
-                  else { setEnvVarNames([]); setConnectorNames([]); setFileKeys([]) }
-                }}
-              />
-            </Form.Item>
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              {!isNew && (
-                <Button onClick={() => setMetaOpen(false)}>Cancel</Button>
-              )}
-              <Button
-                type="primary"
-                icon={<SaveOutlined />}
-                onClick={handleSave}
-                loading={saving}
-              >
-                Save
-              </Button>
+      {(isNew || metaOpen) && (
+        <div className="product-panel" style={{ marginBottom: 14 }}>
+          <div className="product-panel-header">
+            <div>
+              <div className="product-panel-title">Suite settings</div>
+              <div className="product-panel-subtitle">
+                Name the scenario and place it in a collection folder.
+              </div>
             </div>
-          </Form>
-        </Card>
+          </div>
+          <div className="product-panel-body">
+            <Form form={form} layout="vertical" requiredMark="optional">
+              <div className="form-grid-2">
+                <Form.Item
+                  className="form-span-2"
+                  name="name"
+                  label="Name"
+                  rules={[{ required: true, message: 'Name is required' }]}
+                  extra="Shown in the explorer and run history."
+                >
+                  <Input placeholder="e.g. Skill Catalog, Skills Install" autoFocus={isNew} />
+                </Form.Item>
+                <Form.Item
+                  className="form-span-2"
+                  name="description"
+                  label="Description"
+                  extra="Optional context for teammates."
+                >
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="What does this scenario verify?"
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="collectionId"
+                  label="Collection"
+                  rules={[{ required: true, message: 'Collection is required' }]}
+                  initialValue={effectiveCollectionId ?? undefined}
+                  extra="Folders group related scenarios."
+                >
+                  <Select
+                    placeholder={projectId ? 'Select collection' : 'Select a project first'}
+                    options={collections.map((c) => ({ value: c.id, label: c.name }))}
+                    disabled={!projectId || collections.length === 0}
+                    showSearch
+                    optionFilterProp="label"
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="defaultEnvironmentId"
+                  label="Default Environment"
+                  extra="Used when running unless you pick another."
+                >
+                  <Select
+                    showSearch
+                    allowClear
+                    placeholder="Select an environment"
+                    options={environments}
+                    filterOption={(input, option) =>
+                      (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                    }
+                    onChange={(val) => {
+                      if (val) loadEnvVars(val)
+                      else {
+                        setEnvVarNames([])
+                        setConnectorNames([])
+                        setFileKeys([])
+                      }
+                    }}
+                  />
+                </Form.Item>
+              </div>
+            </Form>
+          </div>
+          <div className="product-panel-footer">
+            {!isNew && <Button onClick={() => setMetaOpen(false)}>Cancel</Button>}
+            <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
+              {isNew ? 'Create suite' : 'Save settings'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Steps list */}
       {!isNew && (
         <Card
           size="small"
+          className="brand-card card-suite"
           title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>Steps</span>
@@ -906,15 +939,15 @@ export default function TestSuiteDetailPage() {
       >
         {/* Execution chain preview */}
         {runTarget === null ? (
-          <div style={{ marginBottom: 12, color: '#595959' }}>
+          <div className="form-hint" style={{ marginTop: 0 }}>
             Run all <strong>{steps.length}</strong> steps in this suite.
           </div>
         ) : (() => {
           const chain = resolveChain(runTarget, steps)
           const targetStep = steps.find((s) => s.id === runTarget)
           return (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ color: '#595959', marginBottom: 8 }}>
+            <div style={{ marginBottom: 14 }}>
+              <div className="form-hint" style={{ marginTop: 0, marginBottom: 8 }}>
                 Running <strong>{targetStep?.name}</strong>
                 {chain.length > 1 && <> and <strong>{chain.length - 1}</strong> {chain.length - 1 === 1 ? 'dependency' : 'dependencies'}</>}:
               </div>
@@ -923,10 +956,10 @@ export default function TestSuiteDetailPage() {
                 flexWrap: 'wrap',
                 alignItems: 'center',
                 gap: 4,
-                padding: '8px 12px',
-                background: '#fafafa',
-                borderRadius: 4,
-                border: '1px solid #f0f0f0',
+                padding: '10px 12px',
+                background: '#f8fafc',
+                borderRadius: 8,
+                border: '1px solid var(--border-color)',
               }}>
                 {chain.map((step, i) => (
                   <span key={step.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -939,7 +972,7 @@ export default function TestSuiteDetailPage() {
                     </Tag>
                     <span style={{
                       fontWeight: step.id === runTarget ? 600 : 400,
-                      color: step.id === runTarget ? '#1677ff' : '#595959',
+                      color: step.id === runTarget ? 'var(--accent)' : '#475569',
                       fontSize: 12,
                     }}>
                       {step.name}
@@ -951,22 +984,26 @@ export default function TestSuiteDetailPage() {
           )
         })()}
 
-        {/* Environment picker */}
-        <div style={{ color: '#595959', marginBottom: 6, fontSize: 12 }}>
-          Environment
-        </div>
-        <Select
-          showSearch
-          allowClear
-          placeholder="Select an environment (optional)"
-          value={selectedEnvId}
-          onChange={(val) => setSelectedEnvId(val)}
-          options={environments}
-          filterOption={(input, option) =>
-            (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-          }
-          style={{ width: '100%' }}
-        />
+        <Form layout="vertical" requiredMark="optional">
+          <Form.Item
+            label="Environment"
+            extra="Leave empty to use the suite default when set."
+            style={{ marginBottom: 8 }}
+          >
+            <Select
+              showSearch
+              allowClear
+              placeholder="Select an environment (optional)"
+              value={selectedEnvId}
+              onChange={(val) => setSelectedEnvId(val)}
+              options={environments}
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
+        </Form>
       </Modal>
 
       <ManualInputModal

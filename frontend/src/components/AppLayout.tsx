@@ -1,4 +1,4 @@
-import { Layout, Select, theme, Button, Space } from 'antd'
+import { Layout, theme } from 'antd'
 import {
   ExperimentOutlined,
   SettingOutlined,
@@ -8,7 +8,7 @@ import {
   ProjectOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { useProjectContext } from '../context/ProjectContext'
+import SuiteExplorer from './SuiteExplorer'
 
 const { Sider, Content, Header } = Layout
 
@@ -22,8 +22,8 @@ const navItems = [
 ]
 
 const pageLabelMap: Record<string, string> = {
-  '/': 'Test Suites',
-  '/test-suites': 'Test Suites',
+  '/': 'Suites',
+  '/test-suites': 'Suites',
   '/projects': 'Projects',
   '/environments': 'Environments',
   '/runs': 'Runs',
@@ -31,152 +31,78 @@ const pageLabelMap: Record<string, string> = {
   '/webhooks': 'Webhooks',
 }
 
+function isSuiteWorkspace(pathname: string) {
+  return pathname === '/' || pathname.startsWith('/test-suites')
+}
+
 export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { token } = theme.useToken()
-  const { projects, projectId, setProjectId, loading } = useProjectContext()
 
   const matchedKey = Object.keys(pageLabelMap)
     .filter((k) => location.pathname.startsWith(k) && k !== '/')
     .sort((a, b) => b.length - a.length)[0] ?? '/'
 
   const selectedKey = matchedKey === '/test-suites' ? '/' : matchedKey
-  const pageLabel = pageLabelMap[matchedKey] ?? 'Test Suites'
+  const pageLabel = pageLabelMap[matchedKey] ?? 'Suites'
+  const showExplorer = isSuiteWorkspace(location.pathname)
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout className="app-shell">
       <a className="skip-to-content" href="#main-content">
         Skip to main content
       </a>
+
+      {/* Icon rail — Postman/Bruno style primary nav */}
       <Sider
         collapsed
-        collapsedWidth={72}
-        style={{
-          background: '#fff',
-          borderRight: `1px solid ${token.colorBorderSecondary}`,
-          overflow: 'auto',
-          height: '100vh',
-          position: 'sticky',
-          top: 0,
-          left: 0,
-        }}
+        collapsedWidth={64}
+        className="app-icon-rail"
         theme="light"
         trigger={null}
       >
-        <div
-          style={{
-            height: 40,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
-            background: 'linear-gradient(135deg, #0a2540, #0891b2)',
-          }}
-        >
-          <img src="/icon.svg" alt="OrchestAPI" style={{ width: 24, height: 24 }} />
+        <div className="app-icon-rail-logo">
+          <img src="/icon.svg" alt="OrchestAPI" width={22} height={22} />
         </div>
-
-        <nav style={{ display: 'flex', flexDirection: 'column', padding: '8px 0' }}>
+        <nav className="app-icon-rail-nav" aria-label="Primary">
           {navItems.map((item) => {
             const isActive = item.key === selectedKey
             return (
-              <div
+              <button
                 key={item.key}
-                role="button"
-                tabIndex={0}
+                type="button"
+                className={`app-icon-rail-item${isActive ? ' is-active' : ''}`}
                 aria-label={pageLabelMap[item.key] || item.label}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => navigate(item.key)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    navigate(item.key)
-                  }
-                }}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 2,
-                  padding: '10px 4px',
-                  cursor: 'pointer',
-                  borderRadius: 6,
-                  margin: '1px 8px',
-                  background: isActive ? 'rgba(8,145,178,0.08)' : 'transparent',
-                  color: isActive ? '#0891b2' : '#64748b',
-                  transition: 'background 150ms ease, color 150ms ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.background = '#f1f5f9'
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.background = 'transparent'
-                }}
               >
-                <span style={{ fontSize: 18, lineHeight: 1, display: 'flex' }}>{item.icon}</span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: isActive ? 600 : 500,
-                    fontFamily: 'var(--font-body)',
-                    letterSpacing: 0.2,
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {item.label}
-                </span>
-              </div>
+                <span className="app-icon-rail-icon">{item.icon}</span>
+                <span className="app-icon-rail-label">{item.label}</span>
+              </button>
             )
           })}
         </nav>
       </Sider>
 
-      <Layout>
+      {/* Explorer panel — collections as folders */}
+      {showExplorer && (
+        <aside className="app-explorer" aria-label="Suite explorer">
+          <SuiteExplorer />
+        </aside>
+      )}
+
+      <Layout className="app-workbench">
         <Header
-          style={{
-            background: '#fff',
-            padding: '0 16px',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            height: 40,
-            lineHeight: '40px',
-            gap: 12,
-          }}
+          className="app-workbench-header"
+          style={{ borderBottomColor: token.colorBorderSecondary }}
         >
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 14,
-              fontFamily: 'var(--font-heading)',
-              letterSpacing: -0.3,
-              color: '#1e293b',
-            }}
-          >
-            {pageLabel}
-          </span>
-          <Space size={8}>
-            <Select
-              size="small"
-              style={{ minWidth: 180 }}
-              loading={loading}
-              value={projectId ?? undefined}
-              placeholder="Select project"
-              options={projects.map((p) => ({
-                value: p.id,
-                label: p.name,
-              }))}
-              onChange={(value) => setProjectId(value)}
-              aria-label="Current project"
-            />
-            <Button size="small" type="link" onClick={() => navigate('/projects')}>
-              Manage
-            </Button>
-          </Space>
+          <div className="app-workbench-title">{pageLabel}</div>
+          {!showExplorer && (
+            <div className="app-workbench-meta">OrchestAPI</div>
+          )}
         </Header>
-        <Content id="main-content" style={{ margin: 16, background: token.colorBgLayout }}>
+        <Content id="main-content" className="app-workbench-content">
           <Outlet />
         </Content>
       </Layout>

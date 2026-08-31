@@ -66,15 +66,16 @@ export default function ImportStepModal({ open, suiteId, onSuccess, onCancel }: 
       }
     >
       <div>
-        <div style={{ marginBottom: 8, color: '#666', fontSize: 13 }}>
-          Paste a curl command to import it as a test step.
-        </div>
+        <p className="form-hint" style={{ marginTop: 0 }}>
+          Paste a curl command — we&apos;ll turn it into a step with method, URL, headers, and body.
+        </p>
         <Input.TextArea
           rows={10}
           value={curlValue}
           onChange={(e) => setCurlValue(e.target.value)}
           placeholder={`curl -X POST 'https://api.example.com/users' \\\n  -H 'Content-Type: application/json' \\\n  -H 'Authorization: Bearer token' \\\n  -d '{"name":"test"}'`}
-          style={{ fontFamily: 'monospace', fontSize: 13 }}
+          style={{ fontFamily: 'var(--font-code)', fontSize: 13 }}
+          autoFocus
         />
       </div>
 

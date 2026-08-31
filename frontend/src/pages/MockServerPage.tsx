@@ -300,29 +300,40 @@ function ServerListView() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button type="primary" icon={<PlusOutlined />} size="small" onClick={openCreate}>
-          New Mock Server
-        </Button>
+      <div className="page-header">
+        <div className="page-header-copy">
+          <div className="page-header-kicker">Tools</div>
+          <h1 className="page-header-title">Mock Server</h1>
+          <p className="page-header-desc">
+            Stand up fake HTTP services for local and staged suite runs.
+          </p>
+        </div>
+        <div className="page-header-actions">
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            New Mock Server
+          </Button>
+        </div>
       </div>
 
-      <Table
-        rowKey="id"
-        dataSource={servers}
-        columns={columns}
-        loading={loading}
-        size="small"
-        onChange={handleTableChange}
-        pagination={{
-          current: page + 1,
-          pageSize: 10,
-          total,
-          onChange: (p) => setPage(p - 1),
-          showSizeChanger: false,
-          showTotal: (t) => `${t} total`,
-          size: 'small',
-        }}
-      />
+      <div className="product-panel">
+        <Table
+          rowKey="id"
+          dataSource={servers}
+          columns={columns}
+          loading={loading}
+          size="small"
+          onChange={handleTableChange}
+          pagination={{
+            current: page + 1,
+            pageSize: 10,
+            total,
+            onChange: (p) => setPage(p - 1),
+            showSizeChanger: false,
+            showTotal: (t) => `${t} total`,
+            size: 'small',
+          }}
+        />
+      </div>
 
       <Modal
         title={editServer ? 'Edit Mock Server' : 'New Mock Server'}
@@ -333,12 +344,21 @@ function ServerListView() {
         okText={editServer ? 'Save' : 'Create'}
         width={440}
       >
-        <Form form={form} layout="vertical" size="small" style={{ marginTop: 16 }}>
-          <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
-            <Input placeholder="e.g. Payment Service Mock" />
+        <Form form={form} layout="vertical" requiredMark="optional">
+          <Form.Item
+            name="name"
+            label="Name"
+            rules={[{ required: true, message: 'Name is required' }]}
+            extra="Shown in the list and when wiring suite steps."
+          >
+            <Input placeholder="e.g. Payment Service Mock" autoFocus />
           </Form.Item>
-          <Form.Item name="description" label="Description">
-            <Input.TextArea rows={3} placeholder="Optional description" />
+          <Form.Item name="description" label="Description" extra="Optional context for teammates.">
+            <Input.TextArea
+              rows={3}
+              placeholder="What does this mock stand in for?"
+              autoSize={{ minRows: 2, maxRows: 5 }}
+            />
           </Form.Item>
         </Form>
       </Modal>

@@ -912,7 +912,7 @@ image is amd64; override it with `--platform` when an approved multi-arch
 runtime is available:
 
 ```bash
-./deploy.sh dev --skip-install
+./deploy.sh dev --skip-install --no-push
 docker run -d \
   --name orchestapi \
   -p 8080:8080 \
@@ -931,17 +931,29 @@ If only the JAR is needed, without Docker:
 
 ### Starbucks Internal Kubernetes
 
-The internal release path uses the Starbucks registry and keeps the first
-release restricted to the internal network. Authentication is unchanged;
-this repository applies one `Deployment` and references an external database
-Secret. The Starbucks platform owns the Service, Ingress/Gateway, and
-NetworkPolicy that expose the Pod.
+The internal release path builds, pushes, and can update the live Deployment
+directly (same flow as agent-session). Defaults target
+`developer-portal-stg` / `orchestapi` / container `c0`:
 
 ```bash
-IMAGE_REPOSITORY=registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi \
-  ./deploy.sh "$IMAGE_TAG" --skip-install --push
+# Interactive: auto version + prompt for kubectl apply
+./deploy.sh --skip-install
 
-# Then render and apply an environment-owned Deployment-only overlay:
+# Non-interactive: push image and roll out
+./deploy.sh "$(date +%Y%m%d-%H%M%S)" --skip-install --apply-k8s
+```
+
+To only push without changing the cluster:
+
+```bash
+./deploy.sh "$IMAGE_TAG" --skip-install
+# then optionally:
+# kubectl -n developer-portal-stg set image deployment/orchestapi c0=...:$IMAGE_TAG
+```
+
+For a new environment-owned overlay (first install), render and apply separately:
+
+```bash
 kubectl kustomize k8s/overlays/<approved-overlay> > /tmp/orchestapi.yaml
 kubectl apply -k k8s/overlays/<approved-overlay>
 ```

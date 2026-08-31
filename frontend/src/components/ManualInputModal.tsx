@@ -67,14 +67,19 @@ export default function ManualInputModal({ open, stepName, fields, onSubmit, onC
       }
       width={480}
     >
-      <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 14, fontSize: 13 }}>
         {hasCachedFields
-          ? 'This dependency is being re-executed. Previous values are pre-filled.'
-          : 'This step requires manual input to continue execution.'}
+          ? 'This dependency is being re-executed. Previous values are pre-filled — edit if needed.'
+          : 'This step needs a few values before the run can continue.'}
       </Text>
-      <Form layout="vertical" size="small">
+      <Form layout="vertical" requiredMark="optional">
         {fields.map((f, idx) => (
-          <Form.Item key={f.name} label={<Text strong>{f.name}</Text>} style={{ marginBottom: 12 }}>
+          <Form.Item
+            key={f.name}
+            label={f.name}
+            extra={f.cachedValue != null ? 'Pre-filled from the previous attempt.' : undefined}
+            style={{ marginBottom: 12 }}
+          >
             {isSensitive(f.name) ? (
               <Input.Password
                 autoFocus={idx === 0}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Table,
   Button,
@@ -10,8 +10,7 @@ import {
   Tooltip,
   Modal,
   Input,
-  Tabs,
-  Form,
+  Empty,
 } from 'antd'
 import type { InputRef } from 'antd'
 import {
@@ -23,15 +22,12 @@ import {
   SearchOutlined,
   WarningOutlined,
   CloseCircleFilled,
-  FolderAddOutlined,
 } from '@ant-design/icons'
 import type { FilterDropdownProps } from 'antd/es/table/interface'
 import type { TestSuite, TestSuiteListParams } from '../types/testSuite'
 import type { PageResponse } from '../types/environment'
 import { testSuiteApi, exportSuite } from '../services/testSuiteApi'
-import { collectionApi } from '../services/projectApi'
 import { useProjectContext } from '../context/ProjectContext'
-
 
 const COLUMN_LABELS: Record<string, string> = {
   name: 'Name',
@@ -107,16 +103,18 @@ function ColumnSearch({
 
 export default function TestSuitesPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const {
     projectId,
     collectionId,
     collections,
-    setCollectionId,
     effectiveCollectionId,
     refreshCollections,
+    bumpSuiteTree,
   } = useProjectContext()
-  const [collectionForm] = Form.useForm()
+
+  const selectedCollection = collections.find((c) => c.id === collectionId) ?? null
 
   const [data, setData] = useState<PageResponse<TestSuite>>({
     content: [],
@@ -132,8 +130,18 @@ export default function TestSuitesPage() {
   const [sortBy, setSortBy] = useState('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [refreshKey, setRefreshKey] = useState(0)
-  const [collectionModalOpen, setCollectionModalOpen] = useState(false)
-  const [savingCollection, setSavingCollection] = useState(false)
+
+  const [renameModalOpen, setRenameModalOpen] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const [pendingImport, setPendingImport] = useState<Record<string, unknown> | null>(null)
+
+  useEffect(() => {
+    if (searchParams.get('import') === '1') {
+      fileInputRef.current?.click()
+      searchParams.delete('import')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     let cancelled = false
@@ -169,46 +177,22 @@ export default function TestSuitesPage() {
       }
     }
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [currentPage, pageSize, sortBy, sortDir, appliedFilters, refreshKey, projectId, collectionId])
 
   useEffect(() => {
     setCurrentPage(1)
   }, [projectId, collectionId])
 
-  const handleCreateCollection = async () => {
-    if (!projectId) return
-    try {
-      const values = await collectionForm.validateFields()
-      setSavingCollection(true)
-      const created = await collectionApi.create({
-        projectId,
-        name: values.name,
-        description: values.description ?? '',
-      })
-      message.success('Collection created')
-      setCollectionModalOpen(false)
-      collectionForm.resetFields()
-      await refreshCollections()
-      setCollectionId(created.id)
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'errorFields' in err) return
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to create collection')
-      } else {
-        message.error('Failed to create collection')
-      }
-    } finally {
-      setSavingCollection(false)
-    }
-  }
-
   const handleDelete = async (id: string) => {
     try {
       await testSuiteApi.delete(id)
       message.success('Test suite deleted')
       setRefreshKey((k) => k + 1)
+      bumpSuiteTree()
+      await refreshCollections()
     } catch {
       message.error('Failed to delete test suite')
     }
@@ -233,11 +217,6 @@ export default function TestSuitesPage() {
     setCurrentPage(1)
   }
 
-  // --- Import logic ---
-  const [renameModalOpen, setRenameModalOpen] = useState(false)
-  const [renameValue, setRenameValue] = useState('')
-  const [pendingImport, setPendingImport] = useState<Record<string, unknown> | null>(null)
-
   const doImport = async (importData: Record<string, unknown>) => {
     try {
       const payload = {
@@ -248,6 +227,7 @@ export default function TestSuitesPage() {
       message.success(`Test suite "${importData.name}" imported`)
       setPendingImport(null)
       setRefreshKey((k) => k + 1)
+      bumpSuiteTree()
       await refreshCollections()
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -329,7 +309,7 @@ export default function TestSuitesPage() {
     {
       title: 'S.No',
       key: 'sno',
-      width: 70,
+      width: 64,
       render: (_: unknown, __: TestSuite, index: number) => (
         <span style={{ color: '#888' }}>{(currentPage - 1) * pageSize + index + 1}</span>
       ),
@@ -351,12 +331,13 @@ export default function TestSuitesPage() {
       render: (stepCount: number) => <Tag>{stepCount}</Tag>,
     },
     {
-      title: 'Updated At',
+      title: 'Updated',
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 160,
       sorter: true,
-      sortOrder: sortBy === 'updatedAt' ? (sortDir === 'asc' ? ('ascend' as const) : ('descend' as const)) : null,
+      sortOrder:
+        sortBy === 'updatedAt' ? (sortDir === 'asc' ? ('ascend' as const) : ('descend' as const)) : null,
       render: (date: string) => new Date(date).toLocaleString(),
     },
     {
@@ -395,56 +376,34 @@ export default function TestSuitesPage() {
   ]
 
   return (
-    <div>
-      <div style={{ marginBottom: 12 }}>
-        <Tabs
-          size="small"
-          activeKey={collectionId ?? 'all'}
-          onChange={(key) => setCollectionId(key === 'all' ? null : key)}
-          tabBarExtraContent={
-            <Space>
-              <Button
-                size="small"
-                icon={<FolderAddOutlined />}
-                onClick={() => {
-                  collectionForm.resetFields()
-                  setCollectionModalOpen(true)
-                }}
-                disabled={!projectId}
-              >
-                New Collection
-              </Button>
-              <Button
-                icon={<ImportOutlined />}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Import
-              </Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => navigate('/test-suites/new')}
-              >
-                New Suite
-              </Button>
-            </Space>
-          }
-          items={[
-            {
-              key: 'all',
-              label: 'All',
-            },
-            ...collections.map((c) => ({
-              key: c.id,
-              label: (
-                <span>
-                  {c.name}
-                  <Tag style={{ marginLeft: 6 }}>{c.suiteCount}</Tag>
-                </span>
-              ),
-            })),
-          ]}
-        />
+    <div className="suites-workbench">
+      <div className="suites-workbench-toolbar">
+        <div className="suites-workbench-crumb">
+          {selectedCollection ? (
+            <>
+              <span>{selectedCollection.name}</span>
+              <Tag>{data.totalElements}</Tag>
+            </>
+          ) : (
+            <>
+              <span>All collections</span>
+              <Tag>{data.totalElements}</Tag>
+            </>
+          )}
+        </div>
+        <Space>
+          <Button icon={<ImportOutlined />} onClick={() => fileInputRef.current?.click()}>
+            Import
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => navigate('/test-suites/new')}
+            disabled={!effectiveCollectionId}
+          >
+            New Suite
+          </Button>
+        </Space>
       </div>
 
       <input
@@ -455,29 +414,6 @@ export default function TestSuitesPage() {
         onChange={handleImport}
         aria-label="Import test suite JSON file"
       />
-
-      <Modal
-        title="New Collection"
-        open={collectionModalOpen}
-        onOk={handleCreateCollection}
-        onCancel={() => setCollectionModalOpen(false)}
-        confirmLoading={savingCollection}
-        okText="Create"
-        destroyOnClose
-      >
-        <Form form={collectionForm} layout="vertical" style={{ marginTop: 12 }}>
-          <Form.Item
-            name="name"
-            label="Name"
-            rules={[{ required: true, message: 'Name is required' }]}
-          >
-            <Input maxLength={200} placeholder="e.g. Skills" />
-          </Form.Item>
-          <Form.Item name="description" label="Description">
-            <Input.TextArea rows={2} maxLength={2000} placeholder="Optional" />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       <Modal
         title={
@@ -508,16 +444,10 @@ export default function TestSuitesPage() {
       </Modal>
 
       {activeFilterEntries.length > 0 && (
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div className="suites-filter-bar">
           <span style={{ color: '#888', fontSize: 13 }}>Filters:</span>
           {activeFilterEntries.map(([key, value]) => (
-            <Tag
-              key={key}
-              closable
-              onClose={() => handleResetFilter(key)}
-              color="blue"
-              style={{ fontSize: 13 }}
-            >
+            <Tag key={key} closable onClose={() => handleResetFilter(key)} color="blue">
               {COLUMN_LABELS[key] ?? key}: {value}
             </Tag>
           ))}
@@ -540,7 +470,19 @@ export default function TestSuitesPage() {
         dataSource={data.content}
         rowKey="id"
         loading={loading}
-        style={{ background: '#fff', borderRadius: 8, padding: '0 0 8px' }}
+        className="suites-table"
+        locale={{
+          emptyText: (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                selectedCollection
+                  ? 'No suites in this collection'
+                  : 'Select a collection in the explorer, or create a suite'
+              }
+            />
+          ),
+        }}
         onRow={(record) => ({
           onClick: () => navigate(`/test-suites/${record.id}`),
           style: { cursor: 'pointer' },
@@ -552,7 +494,6 @@ export default function TestSuitesPage() {
           showSizeChanger: true,
           pageSizeOptions: ['10', '20', '50'],
           showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
-          style: { padding: '0 16px' },
         }}
         onChange={(pagination, _filters, sorter) => {
           setCurrentPage(pagination.current ?? 1)

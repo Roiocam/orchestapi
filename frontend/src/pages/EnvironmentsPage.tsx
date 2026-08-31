@@ -416,12 +416,16 @@ export default function EnvironmentsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Space>
-          <Button
-            icon={<ImportOutlined />}
-            onClick={() => fileInputRef.current?.click()}
-          >
+      <div className="page-header">
+        <div className="page-header-copy">
+          <div className="page-header-kicker">Runtime</div>
+          <h1 className="page-header-title">Environments</h1>
+          <p className="page-header-desc">
+            Base URLs, variables, and connectors used when suites run.
+          </p>
+        </div>
+        <div className="page-header-actions">
+          <Button icon={<ImportOutlined />} onClick={() => fileInputRef.current?.click()}>
             Import
           </Button>
           <Button
@@ -431,7 +435,7 @@ export default function EnvironmentsPage() {
           >
             New Environment
           </Button>
-        </Space>
+        </div>
       </div>
 
       <input
@@ -458,9 +462,9 @@ export default function EnvironmentsPage() {
         }}
         okText="Import"
       >
-        <p>
+        <p style={{ marginBottom: 12, color: 'var(--text-body)' }}>
           An environment named <strong>{pendingImport?.name}</strong> already exists.
-          Please enter a new name:
+          Enter a new name to continue.
         </p>
         <Input
           value={renameValue}
@@ -499,12 +503,12 @@ export default function EnvironmentsPage() {
         </div>
       )}
 
+      <div className="product-panel">
       <Table
         columns={columns}
         dataSource={data.content}
         rowKey="id"
         loading={loading}
-        style={{ background: '#fff', borderRadius: 8, padding: '0 0 8px' }}
         onRow={(record) => ({
           onClick: () => navigate(`/environments/${record.id}`),
           style: { cursor: 'pointer' },
@@ -533,6 +537,7 @@ export default function EnvironmentsPage() {
           }
         }}
       />
+      </div>
     </div>
   )
 }

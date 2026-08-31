@@ -106,70 +106,80 @@ export default function ProjectsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          New Project
-        </Button>
+      <div className="page-header">
+        <div className="page-header-copy">
+          <div className="page-header-kicker">Workspace</div>
+          <h1 className="page-header-title">Projects</h1>
+          <p className="page-header-desc">
+            A project is a system boundary. Collections and suites live inside it.
+          </p>
+        </div>
+        <div className="page-header-actions">
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            New Project
+          </Button>
+        </div>
       </div>
 
-      <Table
-        rowKey="id"
-        loading={loading}
-        dataSource={data}
-        style={{ background: '#fff', borderRadius: 8, padding: '0 0 8px' }}
-        pagination={false}
-        columns={[
-          {
-            title: 'Name',
-            dataIndex: 'name',
-            render: (name: string, record: Project) => (
-              <Space>
-                <strong>{name}</strong>
-                {record.isDefault && <Tag>Default</Tag>}
-              </Space>
-            ),
-          },
-          {
-            title: 'Collections',
-            dataIndex: 'collectionCount',
-            width: 120,
-            render: (count: number) => <Tag>{count}</Tag>,
-          },
-          {
-            title: 'Updated',
-            dataIndex: 'updatedAt',
-            width: 180,
-            render: (date: string) => new Date(date).toLocaleString(),
-          },
-          {
-            title: 'Actions',
-            key: 'actions',
-            width: 120,
-            render: (_: unknown, record: Project) => (
-              <Space>
-                <Tooltip title="Edit">
-                  <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
-                </Tooltip>
-                <Popconfirm
-                  title="Delete this project?"
-                  description="Only empty projects can be deleted."
-                  disabled={record.isDefault}
-                  onConfirm={() => handleDelete(record)}
-                  okText="Delete"
-                  okType="danger"
-                >
-                  <Button
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
+      <div className="product-panel">
+        <Table
+          rowKey="id"
+          loading={loading}
+          dataSource={data}
+          pagination={false}
+          columns={[
+            {
+              title: 'Name',
+              dataIndex: 'name',
+              render: (name: string, record: Project) => (
+                <Space>
+                  <strong>{name}</strong>
+                  {record.isDefault && <Tag>Default</Tag>}
+                </Space>
+              ),
+            },
+            {
+              title: 'Collections',
+              dataIndex: 'collectionCount',
+              width: 120,
+              render: (count: number) => <Tag>{count}</Tag>,
+            },
+            {
+              title: 'Updated',
+              dataIndex: 'updatedAt',
+              width: 180,
+              render: (date: string) => new Date(date).toLocaleString(),
+            },
+            {
+              title: 'Actions',
+              key: 'actions',
+              width: 120,
+              render: (_: unknown, record: Project) => (
+                <Space>
+                  <Tooltip title="Edit">
+                    <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(record)} />
+                  </Tooltip>
+                  <Popconfirm
+                    title="Delete this project?"
+                    description="Only empty projects can be deleted."
                     disabled={record.isDefault}
-                  />
-                </Popconfirm>
-              </Space>
-            ),
-          },
-        ]}
-      />
+                    onConfirm={() => handleDelete(record)}
+                    okText="Delete"
+                    okType="danger"
+                  >
+                    <Button
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      disabled={record.isDefault}
+                    />
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </div>
 
       <Modal
         title={editing ? 'Edit Project' : 'New Project'}
@@ -180,16 +190,26 @@ export default function ProjectsPage() {
         okText={editing ? 'Save' : 'Create'}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
+        <Form form={form} layout="vertical" requiredMark="optional">
           <Form.Item
             name="name"
             label="Name"
             rules={[{ required: true, message: 'Name is required' }]}
+            extra="Usually the system or product this suite tree belongs to."
           >
-            <Input maxLength={200} placeholder="e.g. Agent Platform" />
+            <Input maxLength={200} placeholder="e.g. Agent Platform" autoFocus />
           </Form.Item>
-          <Form.Item name="description" label="Description">
-            <Input.TextArea rows={3} maxLength={2000} placeholder="Optional" />
+          <Form.Item
+            name="description"
+            label="Description"
+            extra="Optional — helps teammates pick the right project."
+          >
+            <Input.TextArea
+              rows={3}
+              maxLength={2000}
+              placeholder="What system does this project cover?"
+              autoSize={{ minRows: 2, maxRows: 5 }}
+            />
           </Form.Item>
         </Form>
       </Modal>
