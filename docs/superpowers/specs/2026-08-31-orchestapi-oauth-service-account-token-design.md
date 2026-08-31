@@ -1,6 +1,6 @@
 # OrchestAPI OAuth Service Account Token 设计
 
-**状态：** 已获用户确认的设计，等待书面 Spec review
+**状态：** 已通过用户 review，实施计划已生成
 
 **日期：** 2026-08-31
 
