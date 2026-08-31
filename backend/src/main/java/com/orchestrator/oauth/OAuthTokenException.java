@@ -6,20 +6,11 @@ public class OAuthTokenException extends RuntimeException {
     private final Integer httpStatus;
 
     public OAuthTokenException(OAuthTokenErrorCode code, String message) {
-        this(code, message, null, null);
+        this(code, message, null);
     }
 
     public OAuthTokenException(OAuthTokenErrorCode code, String message, Integer httpStatus) {
-        this(code, message, httpStatus, null);
-    }
-
-    public OAuthTokenException(OAuthTokenErrorCode code, String message, Throwable cause) {
-        this(code, message, null, cause);
-    }
-
-    private OAuthTokenException(
-            OAuthTokenErrorCode code, String message, Integer httpStatus, Throwable cause) {
-        super(message, cause);
+        super(message);
         this.code = code;
         this.httpStatus = httpStatus;
     }
