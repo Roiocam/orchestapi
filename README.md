@@ -1000,6 +1000,10 @@ spec:
 
 For local development, both default to `/` — no configuration needed.
 
+### Starbucks 内部 Kubernetes
+
+面向 Starbucks 内网的首版使用一个镜像和一个 Service，在 `/orchestapi` 下同时提供 UI、API、SSE、Mock 与 Webhook。部署步骤、Secret 外置方式、受限 Ingress 与回滚流程见 [Kubernetes 内部部署说明](k8s/README.md)。`k8s/overlays/internal-example` 仅为带安全占位值的示例，不能直接作为生产配置 apply。
+
 ---
 
 ## Configuration
