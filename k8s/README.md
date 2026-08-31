@@ -2,7 +2,7 @@
 
 本目录提供单镜像、单 Service 的内部部署模板。应用、REST/SSE、Mock 与 Webhook 都通过同一个无重写前缀 `/orchestapi` 暴露；首版仅依赖网络边界限制访问，不变更应用认证。
 
-`overlays/internal-example` **不可直接部署**。其中的 `orchestapi-internal`、`registry.internal.invalid`、`.invalid` 主机名和 `192.0.2.0/32` 都是安全占位符。开始部署前，平台负责人必须将该目录复制到环境自有的 overlay，并用已批准的命名空间、镜像仓库与 tag、IngressClass/注解、TLS Secret、访问 CIDR、以及 Ingress controller 命名空间选择器替换这些值。
+`overlays/internal-example` **不可直接部署**。其中的 `orchestapi-internal`、`replace-me` tag、`.invalid` 主机名和 `192.0.2.0/32` 都是安全占位符；镜像仓库默认指向已在 Starbucks 项目中使用的 `registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi`，也必须由环境负责人确认或覆盖。开始部署前，平台负责人必须将该目录复制到环境自有的 overlay，并用已批准的命名空间、镜像仓库与 tag、IngressClass/注解、TLS Secret、访问 CIDR、以及 Ingress controller 命名空间选择器替换这些值。
 
 不要直接对 `k8s/base` 或 `overlays/internal-example` 执行 `kubectl apply`。基础层默认拒绝所有入站流量；示例层只适用于渲染和作为环境配置起点。
 
@@ -15,17 +15,40 @@
 
 ## 构建并发布镜像
 
-在已取得内部镜像仓库权限的构建环境中设置 `IMAGE_REPOSITORY` 与 `IMAGE_TAG`，再执行：
+采用与 `agent-session` 相同的职责边界：前端和后端在构建机本地完成，Docker 不再运行 Node 或 Maven，只把已验证的 Spring Boot JAR 封装进运行时镜像。默认运行时 `FROM` 使用从 `agent-session`/Starbucks 项目构建配置中核对的 Java 基础镜像；平台若分配了其他批准镜像，通过 `RUNTIME_IMAGE` 覆盖。
+
+先确认构建机具备 Java 21、Node/npm、Maven（或 `backend/mvnw`）和 Docker，并登录内部镜像仓库。最小本地构建命令：
 
 ```bash
-docker build \
-  --build-arg VITE_BASE_PATH=/orchestapi/ \
-  --build-arg APP_VERSION="$IMAGE_TAG" \
-  --build-arg VCS_REF="$(git rev-parse --verify HEAD)" \
-  --tag "$IMAGE_REPOSITORY:$IMAGE_TAG" .
+./deploy.sh "$IMAGE_TAG" --skip-install
 ```
 
-推送镜像和生成环境 overlay 均由拥有相应内部平台权限的发布流程负责。本仓库不包含真实仓库地址或 tag。
+脚本会依次执行：
+
+1. `VITE_BASE_PATH=/orchestapi/ npm run build`；
+2. `mvn clean package -Dfrontend.dist.dir=.../frontend/dist`，生成 `backend/target/orchestapi-1.0.0.jar`，并校验 JAR 内含 `static/index.html`；
+3. `docker build`，仅将该 JAR 封装为运行时镜像。
+
+默认只构建本地镜像，不会 push 或修改集群。需要发布到 Starbucks 内部仓库时显式执行：
+
+```bash
+IMAGE_REPOSITORY=registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi \
+  ./deploy.sh "$IMAGE_TAG" --skip-install --push
+```
+
+只需要 JAR（例如交给其他制品流程）时：
+
+```bash
+./deploy.sh "$IMAGE_TAG" --skip-install --jar-only
+```
+
+查看命令计划而不执行任何构建或发布动作：
+
+```bash
+./deploy.sh "$IMAGE_TAG" --dry-run
+```
+
+`--apply-k8s` 只在镜像已经推送并且当前 kubeconfig/namespace 已获批准时使用；它执行 `kubectl set image`，不会创建数据库 Secret。推送镜像和生成环境 overlay 仍由拥有相应内部平台权限的发布流程负责。
 
 ## 在集群外管理数据库凭据
 

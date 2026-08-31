@@ -4,9 +4,9 @@
 
 **Goal:** Deliver a safe, single-image Kubernetes deployment template for restricted Starbucks internal access under `/orchestapi`, without changing application authentication or business APIs.
 
-**Architecture:** Keep the existing multi-stage root Dockerfile: Vite assets are built with `VITE_BASE_PATH=/orchestapi/` and copied into the Spring Boot JAR. Kubernetes runs one non-root backend Pod with `CONTEXT_PATH=/orchestapi`, external PostgreSQL credentials injected only from a pre-created Secret, and a no-rewrite Ingress mapping the same prefix to the single Service. The base Kustomize target is safe-by-default; the internal example overlay uses non-routable example networking values until the platform owner substitutes its approved ones.
+**Architecture:** Keep one runtime image and one Kubernetes Service, but move build ownership to the host/CI: Vite assets are built with `VITE_BASE_PATH=/orchestapi/`, Maven copies `frontend/dist` into the Spring Boot JAR, and Docker only packages that JAR into a Starbucks internal Java runtime image. Kubernetes runs one non-root backend Pod with `CONTEXT_PATH=/orchestapi`, external PostgreSQL credentials injected only from a pre-created Secret, and a no-rewrite Ingress mapping the same prefix to the single Service. The base Kustomize target is safe-by-default; the internal example overlay uses non-routable example networking values until the platform owner substitutes its approved ones.
 
-**Tech Stack:** Java 21, Spring Boot 3.3, Vite/React, Docker multi-stage builds, Kubernetes `apps/v1`, `networking.k8s.io/v1`, Kustomize via `kubectl kustomize`.
+**Tech Stack:** Java 21, Spring Boot 3.3, Vite/React, local Maven packaging, runtime-only Docker packaging, Kubernetes `apps/v1`, `networking.k8s.io/v1`, Kustomize via `kubectl kustomize`.
 
 **Spec:** `docs/superpowers/specs/2026-08-31-orchestapi-internal-deployment-design.md`
 
@@ -17,9 +17,9 @@
 - Build with Java 21; the local default Java 25 does not run Lombok annotation processing correctly for this project.
 - Production backend `replicas` is exactly `1` because SSE, webhook listeners, run registry, and scheduling are process-local.
 - Public paths are `/orchestapi/**`, `/orchestapi/api/**`, `/orchestapi/mock/**`, and `/orchestapi/webhook/**`; Ingress does not rewrite paths.
-- No actual host, CIDR, namespace, registry address, database value, TLS secret, username, password, token, or Kubernetes `Secret` manifest is committed.
+- No environment-specific host, CIDR, namespace, database value, TLS secret, username, password, token, or Kubernetes `Secret` manifest is committed. The image registry/base-image defaults are the Starbucks paths verified from the related internal projects and remain overrideable by the platform owner.
 - The internal example overlay deliberately uses `.invalid` names and `192.0.2.0/32`; it is renderable but not deployable until a Starbucks platform owner supplies approved values.
-- Preserve local `docker-compose.yml` as the development workflow.
+- Preserve local `docker-compose.yml` as the development workflow; it consumes the image produced by `deploy.sh` rather than rebuilding Node/Maven inside Docker.
 - Do not claim real-cluster rollout, allowlist enforcement, or PostgreSQL connectivity without a live platform verification.
 
 ---
@@ -28,7 +28,10 @@
 
 | Path | Responsibility |
 | --- | --- |
-| `Dockerfile` | Preserve the existing one-image build and attach immutable OCI version/revision labels. |
+| `Dockerfile` | Package a locally built executable JAR into the Starbucks internal Java runtime image and attach immutable OCI version/revision labels. |
+| `deploy.sh` | Build frontend and backend locally, validate the JAR contents, optionally package/push the runtime image, and optionally print/apply the Kubernetes image update. |
+| `backend/pom.xml` | Provide the `frontend-static` profile that copies a supplied Vite `dist` directory into the JAR resources during Maven packaging. |
+| `.dockerignore` | Keep Docker context limited to the locally produced JAR and runtime packaging inputs. |
 | `backend/src/main/resources/application-prod.yml` | Hide actuator dependency details in the `prod` profile. |
 | `backend/src/test/resources/application-test.yml` | Create the H2 `orchestrator` schema before Hibernate starts so the existing test profile is valid. |
 | `backend/src/test/java/com/orchestrator/ProductionDeploymentConfigurationTest.java` | Prove the production health endpoint works through `/orchestapi` and has no dependency details. |
@@ -193,7 +196,7 @@ data:
 
 - [ ] **Step 3: Create the restricted internal example overlay.**
 
-Set `namespace: orchestapi-internal` in the overlay `kustomization.yaml`, include `../../base`, and use Kustomize `images` to turn `orchestapi` into `registry.internal.invalid/orchestapi:replace-me`.
+Set `namespace: orchestapi-internal` in the overlay `kustomization.yaml`, include `../../base`, and use Kustomize `images` to turn `orchestapi` into `registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi:replace-me`.
 
 Patch the Ingress with the following deliberate non-production values and SSE-safe Nginx annotations:
 
@@ -256,18 +259,14 @@ git commit -m "chore: add internal Kubernetes deployment manifests"
 
 - [ ] **Step 1: Write the non-deployable overlay guard into the runbook.**
 
-At the start of `k8s/README.md`, state that `internal-example` uses `.invalid` endpoints, `192.0.2.0/32`, `orchestapi-internal`, and `registry.internal.invalid`; it must be copied to an environment-owned overlay and edited before `kubectl apply -k`.
+At the start of `k8s/README.md`, state that `internal-example` uses `.invalid` endpoints, `192.0.2.0/32`, `orchestapi-internal`, and a `replace-me` tag; its registry path is a Starbucks staging example that must be confirmed or overridden. The overlay must be copied to an environment-owned overlay and edited before `kubectl apply -k`.
 
 - [ ] **Step 2: Document exact image and Secret workflows.**
 
 Include these command forms, retaining only environment variables or a local ignored file for credentials:
 
 ```bash
-docker build \
-  --build-arg VITE_BASE_PATH=/orchestapi/ \
-  --build-arg APP_VERSION="$IMAGE_TAG" \
-  --build-arg VCS_REF="$(git rev-parse --verify HEAD)" \
-  --tag "$IMAGE_REPOSITORY:$IMAGE_TAG" .
+./deploy.sh "$IMAGE_TAG" --skip-install --push
 
 kubectl -n "$DEPLOY_NAMESPACE" create secret generic orchestapi-db \
   --from-env-file="$SECRET_ENV_FILE" \
@@ -323,11 +322,11 @@ JAVA_HOME="$task_java_home" PATH="$task_java_home/bin:$PATH" mvn test -f backend
 npm --prefix frontend run lint
 VITE_BASE_PATH=/orchestapi/ npm --prefix frontend run build
 kubectl kustomize k8s/overlays/internal-example > /tmp/orchestapi-internal.yaml
-docker build --build-arg VITE_BASE_PATH=/orchestapi/ --build-arg APP_VERSION=verification --build-arg VCS_REF="$(git rev-parse --verify HEAD)" --tag orchestapi:verification .
-docker inspect orchestapi:verification --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{.Config.User}}'
+./deploy.sh verification --skip-install --platform linux/amd64
+docker inspect registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi:verification --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{.Config.User}}'
 ```
 
-Expected: backend tests pass on Java 21, lint/build pass with the required prefix, Kustomize renders, Docker builds, and inspect returns `verification orchestapi`.
+Expected: backend tests pass on Java 21, the required-prefix frontend build passes, Kustomize renders, the local Maven/JAR plus runtime-only Docker build passes, and inspect returns `verification 185`. Existing frontend lint findings remain baseline evidence unless frontend source is changed.
 
 - [ ] **Step 2: Perform a local container health smoke only with a disposable PostgreSQL endpoint.**
 

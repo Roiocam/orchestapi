@@ -79,6 +79,7 @@
 - [Connector Reference](#connector-reference)
 - [Deployment](#deployment)
   - [Docker](#docker)
+  - [Starbucks Internal Kubernetes](#starbucks-internal-kubernetes)
   - [Docker Compose](#docker-compose)
   - [Context Path (Reverse Proxy / Kubernetes)](#context-path-reverse-proxy--kubernetes)
 - [Configuration](#configuration)
@@ -904,30 +905,55 @@ queue=my_queue routingKey=order.created
 
 ### Docker
 
-Build and run as a single container:
+The production Dockerfile is runtime-only. Build the frontend and executable
+Spring Boot JAR locally, then let Docker package that JAR:
 
 ```bash
-docker build -t orchestapi .
+./deploy.sh dev --skip-install
 docker run -d \
   --name orchestapi \
   -p 8080:8080 \
   -e DB_URL=jdbc:postgresql://your-host:5432/orchestapi \
   -e DB_USERNAME=orchestapi \
   -e DB_PASSWORD=your_password \
-  orchestapi
+  registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi:dev
 ```
 
-Or use the published image:
+If only the JAR is needed, without Docker:
 
 ```bash
-docker pull santhoshkumr96/orchestapi:latest
+./deploy.sh dev --skip-install --jar-only
+# backend/target/orchestapi-1.0.0.jar
 ```
+
+### Starbucks Internal Kubernetes
+
+The internal release path uses the Starbucks registry and keeps the first
+release restricted to the internal network. Authentication is unchanged;
+access is constrained by the environment-owned Ingress allowlist and
+NetworkPolicy overlay.
+
+```bash
+IMAGE_REPOSITORY=registry-stg.vestack.sbuxcf.net/agent-develop-lifecycle-management/orchestapi \
+  ./deploy.sh "$IMAGE_TAG" --skip-install --push
+
+# Then render and apply an environment-owned overlay:
+kubectl kustomize k8s/overlays/<approved-overlay> > /tmp/orchestapi.yaml
+kubectl apply -k k8s/overlays/<approved-overlay>
+```
+
+The checked-in `k8s/overlays/internal-example` is deliberately non-deployable
+and contains `.invalid` host/TLS/CIDR placeholders. Replace it with values
+approved by the Starbucks platform owner before applying.
 
 ### Docker Compose
 
 ```bash
 git clone https://github.com/santhoshkumr96/orchestapi.git
 cd orchestapi
+
+# Build the local runtime image first (or set ORCHESTAPI_IMAGE to an existing image)
+./deploy.sh dev --skip-install
 
 # Set your DB password
 echo "DB_PASSWORD=your_password" > .env
@@ -951,10 +977,10 @@ docker run -d \
   orchestapi
 ```
 
-When building the Docker image, pass the base path as a build argument so the frontend assets are compiled with the correct prefix:
+When building the local JAR/image, pass the base path to the host build script:
 
 ```bash
-docker build --build-arg VITE_BASE_PATH=/orchestapi -t orchestapi .
+VITE_BASE_PATH=/orchestapi/ ./deploy.sh dev --skip-install
 ```
 
 **How it works:**
@@ -963,7 +989,7 @@ docker build --build-arg VITE_BASE_PATH=/orchestapi -t orchestapi .
 |-------|----------|--------|
 | Backend (Spring Boot) | `CONTEXT_PATH` | Sets `server.servlet.context-path` — all API routes are prefixed |
 | Frontend (Vite/React) | `VITE_BASE_PATH` | Sets Vite `base` + React Router `basename` + axios interceptor |
-| Docker | `VITE_BASE_PATH` build arg | Compiled into the frontend at build time |
+| Host build | `VITE_BASE_PATH` environment variable | Compiled into the frontend before Maven packages the JAR |
 
 **Nginx reverse proxy example:**
 

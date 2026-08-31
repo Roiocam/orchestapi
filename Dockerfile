@@ -1,63 +1,40 @@
 # ============================================================
-# OrchestAPI — Multi-stage Production Dockerfile
-# Builds frontend + backend into a single image
+# OrchestAPI — Starbucks internal runtime image
+#
+# The frontend and Spring Boot JAR are built on the host (or in CI)
+# before this file is evaluated. Docker only packages the immutable
+# JAR into the internal Java runtime image.
 # ============================================================
 
-# ── Stage 1: Build Frontend ──────────────────────────────────
-FROM node:20-alpine AS frontend-build
-ARG VITE_BASE_PATH=/
-ENV VITE_BASE_PATH=${VITE_BASE_PATH}
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm ci --prefer-offline
-COPY frontend/ ./
-RUN npm run build
-
-# ── Stage 2: Build Backend ───────────────────────────────────
-FROM maven:3.9-eclipse-temurin-21 AS backend-build
-WORKDIR /app/backend
-
-# Cache Maven dependencies first (layer caching)
-COPY backend/pom.xml ./
-RUN mvn dependency:go-offline -B
-
-# Copy source code
-COPY backend/src ./src/
-
-# Copy frontend build output into Spring Boot static resources
-COPY --from=frontend-build /app/frontend/dist ./src/main/resources/static/
-
-# Build the JAR (skip tests — they need a running DB)
-RUN mvn clean package -DskipTests -B
-
-# ── Stage 3: Production Runtime ──────────────────────────────
-FROM eclipse-temurin:21-jre-alpine AS runtime
+ARG RUNTIME_IMAGE=registry-stg.vestack.sbuxcf.net/yunxiao-paas/openjdk:21-ea-23-jdk-bullseye-1
+FROM ${RUNTIME_IMAGE} AS runtime
 
 ARG APP_VERSION=dev
 ARG VCS_REF=unknown
+ARG JAR_FILE=backend/target/orchestapi-1.0.0.jar
 LABEL org.opencontainers.image.title="OrchestAPI" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Add non-root user for security
-RUN addgroup -S orchestapi && adduser -S orchestapi -G orchestapi
+# The Starbucks base image already runs as non-root UID 185. Reuse that
+# identity instead of modifying /etc/passwd or /etc/group at build time.
+USER 0
+RUN mkdir -p /app && chown -R 185:0 /app
 
 WORKDIR /app
 
-# Copy the built JAR
-COPY --from=backend-build /app/backend/target/orchestapi-1.0.0.jar app.jar
+# Copy the locally built, executable Spring Boot JAR.
+COPY --chown=185:0 ${JAR_FILE} app.jar
 
-# Switch to non-root user
-USER orchestapi
+USER 185
 
-# Expose the default port
 EXPOSE 8080
 
-# Health check using Spring Actuator (respects CONTEXT_PATH)
+# Health check using Spring Actuator (respects CONTEXT_PATH). The
+# conditional keeps the image usable with either wget or curl-based bases.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD wget -q --spider http://localhost:8080${CONTEXT_PATH:-}/actuator/health || exit 1
+  CMD ["sh", "-c", "if command -v wget >/dev/null 2>&1; then wget -q --spider http://localhost:8080${CONTEXT_PATH:-}/actuator/health; elif command -v curl >/dev/null 2>&1; then curl -fsS http://localhost:8080${CONTEXT_PATH:-}/actuator/health >/dev/null; else exit 1; fi"]
 
-# JVM tuning for containers
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
