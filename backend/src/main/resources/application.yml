@@ -49,3 +49,7 @@ orchestapi:
   # Public UI origin used in schedule notify label.runsUrl (no trailing slash).
   # Example: https://idp.stg.starbucks.net/orchestapi
   public-base-url: ${PUBLIC_BASE_URL:}
+  # IANA timezone for cron evaluation (hour/day-of-week fields).
+  # Stored next/last run timestamps remain UTC naive LocalDateTime for the UI.
+  schedule:
+    timezone: ${SCHEDULE_TIMEZONE:Asia/Shanghai}

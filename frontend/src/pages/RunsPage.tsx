@@ -1724,7 +1724,11 @@ export default function RunsPage() {
               )}
               {!cronPreviewLoading && cronPreview && cronPreview.valid && cronPreview.nextFireTimes.length > 0 && (
                 <div style={{ marginTop: 4 }}>
-                  <Text type="secondary" style={{ fontSize: 11 }}>{t('pages.runs.nextFireTimes')}</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {cronPreview.timezone
+                      ? t('pages.runs.nextFireTimes', { timezone: cronPreview.timezone })
+                      : t('pages.runs.nextFireTimesNoTz')}
+                  </Text>
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 11, color: '#595959' }}>
                     {cronPreview.nextFireTimes.map((fireTime, i) => (
                       <li key={i}>{formatDateTime(fireTime)}</li>

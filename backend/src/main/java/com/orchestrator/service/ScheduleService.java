@@ -36,6 +36,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,6 +63,7 @@ public class ScheduleService {
     private final BatchExecutionService batchExecutionService;
     private final ScheduleNotifyService scheduleNotifyService;
     private final RunProgressRegistry runProgressRegistry;
+    private final ZoneId scheduleZone;
 
     private final ConcurrentHashMap<UUID, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
 
@@ -73,7 +77,8 @@ public class ScheduleService {
                            TaskScheduler taskScheduler,
                            @Lazy BatchExecutionService batchExecutionService,
                            ScheduleNotifyService scheduleNotifyService,
-                           RunProgressRegistry runProgressRegistry) {
+                           RunProgressRegistry runProgressRegistry,
+                           ZoneId scheduleZoneId) {
         this.repository = repository;
         this.suiteRepository = suiteRepository;
         this.collectionRepository = collectionRepository;
@@ -85,15 +90,18 @@ public class ScheduleService {
         this.batchExecutionService = batchExecutionService;
         this.scheduleNotifyService = scheduleNotifyService;
         this.runProgressRegistry = runProgressRegistry;
+        this.scheduleZone = scheduleZoneId;
     }
 
     @PostConstruct
     public void loadSchedulesOnStartup() {
         List<RunSchedule> active = repository.findAllActive();
         for (RunSchedule schedule : active) {
+            schedule.setNextRunAt(computeNextRunAt(schedule.getCronExpression()));
+            repository.save(schedule);
             registerTask(schedule);
         }
-        log.info("Loaded {} active schedules on startup", active.size());
+        log.info("Loaded {} active schedules on startup (cron timezone={})", active.size(), scheduleZone);
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -230,19 +238,21 @@ public class ScheduleService {
         try {
             CronExpression cron = CronExpression.parse(normalizeCron(cronExpression));
             List<LocalDateTime> fireTimes = new ArrayList<>();
-            LocalDateTime next = LocalDateTime.now();
+            ZonedDateTime next = ZonedDateTime.now(scheduleZone);
             for (int i = 0; i < 5; i++) {
                 next = cron.next(next);
                 if (next == null) break;
-                fireTimes.add(next);
+                fireTimes.add(toUtcLocalDateTime(next));
             }
             return CronPreviewResponse.builder()
                     .valid(true)
+                    .timezone(scheduleZone.getId())
                     .nextFireTimes(fireTimes)
                     .build();
         } catch (IllegalArgumentException e) {
             return CronPreviewResponse.builder()
                     .valid(false)
+                    .timezone(scheduleZone.getId())
                     .error(e.getMessage())
                     .build();
         }
@@ -253,7 +263,7 @@ public class ScheduleService {
     private void registerTask(RunSchedule schedule) {
         cancelTask(schedule.getId());
         try {
-            CronTrigger trigger = new CronTrigger(normalizeCron(schedule.getCronExpression()));
+            CronTrigger trigger = new CronTrigger(normalizeCron(schedule.getCronExpression()), scheduleZone);
             ScheduledFuture<?> future = taskScheduler.schedule(
                     () -> executeScheduledRun(schedule.getId()),
                     trigger);
@@ -616,10 +626,15 @@ public class ScheduleService {
     private LocalDateTime computeNextRunAt(String cronExpression) {
         try {
             CronExpression cron = CronExpression.parse(normalizeCron(cronExpression));
-            return cron.next(LocalDateTime.now());
+            ZonedDateTime next = cron.next(ZonedDateTime.now(scheduleZone));
+            return next == null ? null : toUtcLocalDateTime(next);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static LocalDateTime toUtcLocalDateTime(ZonedDateTime zoned) {
+        return zoned.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
     }
 
     private RunScheduleResponse toResponse(RunSchedule schedule) {

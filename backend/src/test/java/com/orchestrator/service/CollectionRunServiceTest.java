@@ -139,7 +139,8 @@ class ScheduleBatchRunTest {
                 taskScheduler,
                 batchExecutionService,
                 scheduleNotifyService,
-                runProgressRegistry);
+                runProgressRegistry,
+                java.time.ZoneId.of("Asia/Shanghai"));
     }
 
     @Test

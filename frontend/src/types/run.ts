@@ -63,6 +63,7 @@ export interface RunScheduleRequest {
 export interface CronPreviewResponse {
   valid: boolean
   error: string | null
+  timezone?: string | null
   nextFireTimes: string[]
 }
 

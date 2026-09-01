@@ -552,6 +552,10 @@ Collection and project schedules expand to all suites under the target (ordered 
 
 ### Cron Format
 
+Cron fields are evaluated in the configured schedule timezone
+(`orchestapi.schedule.timezone` / `SCHEDULE_TIMEZONE`, default `Asia/Shanghai`).
+Persisted `nextRunAt` / preview times are stored as UTC and shown in your browser local time.
+
 ```
 ┌───────────── minute (0-59)
 │ ┌───────────── hour (0-23)
