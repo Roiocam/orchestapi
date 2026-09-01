@@ -86,6 +86,38 @@ export interface ScheduleListParams {
   sortDir?: 'asc' | 'desc'
 }
 
+export interface ScheduleNotifyLogResponse {
+  id: string
+  scheduleId: string | null
+  eventId: string | null
+  eventName: string | null
+  businessId: string | null
+  notifyUrl: string
+  success: boolean
+  httpStatus: number | null
+  requestBody: string | null
+  responseBody: string | null
+  errorMessage: string | null
+  durationMs: number
+  batchId: string | null
+  runStatus: string | null
+  createdAt: string
+}
+
+export interface ScheduleNotifyLogListParams {
+  page?: number
+  size?: number
+  scheduleId?: string
+  success?: boolean
+  sortBy?: string
+  sortDir?: 'asc' | 'desc'
+}
+
+export interface ScheduleRunNowResponse {
+  scheduleId: string
+  message: string
+}
+
 export interface DashboardStats {
   totalRuns: number
   successCount: number

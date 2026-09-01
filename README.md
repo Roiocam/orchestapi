@@ -620,6 +620,12 @@ When enabled on a schedule, OrchestAPI POSTs:
 
 Set `PUBLIC_BASE_URL` (or `orchestapi.public-base-url`) so `label.runsUrl` is absolute. Notify failures are logged only — they do not fail the scheduled run.
 
+Each delivery attempt is stored and queryable under **Runs → Notifications** (success/failure, HTTP status, request/response body, duration).
+
+### Run now
+
+On **Runs → Schedules**, use **Run now** to trigger a schedule immediately (works even if the schedule is inactive). Execution and notify behavior match a normal cron fire.
+
 ---
 
 ## Run History

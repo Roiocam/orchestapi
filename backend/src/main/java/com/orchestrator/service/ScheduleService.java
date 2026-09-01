@@ -4,6 +4,7 @@ import com.orchestrator.dto.CronPreviewResponse;
 import com.orchestrator.dto.PageResponse;
 import com.orchestrator.dto.RunScheduleRequest;
 import com.orchestrator.dto.RunScheduleResponse;
+import com.orchestrator.dto.ScheduleRunNowResponse;
 import com.orchestrator.dto.SuiteBatchRunResult;
 import com.orchestrator.dto.SuiteExecutionResult;
 import com.orchestrator.exception.NotFoundException;
@@ -141,6 +142,25 @@ public class ScheduleService {
         return toResponse(schedule);
     }
 
+    /**
+     * Trigger a schedule immediately on a background thread (does not require active=true).
+     */
+    public ScheduleRunNowResponse triggerNow(UUID id) {
+        RunSchedule schedule = repository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Schedule not found: " + id));
+        taskScheduler.schedule(() -> {
+            try {
+                executeScheduledRun(id, false);
+            } catch (Exception e) {
+                log.error("Manual run-now failed for schedule {}: {}", id, e.getMessage(), e);
+            }
+        }, java.time.Instant.now());
+        return ScheduleRunNowResponse.builder()
+                .scheduleId(schedule.getId().toString())
+                .message("Schedule run started")
+                .build();
+    }
+
     @Transactional
     public RunScheduleResponse update(UUID id, RunScheduleRequest req) {
         RunSchedule schedule = repository.findById(id)
@@ -247,8 +267,20 @@ public class ScheduleService {
     }
 
     void executeScheduledRun(UUID scheduleId) {
+        executeScheduledRun(scheduleId, true);
+    }
+
+    /**
+     * @param requireActive when true (cron path), inactive schedules are skipped and unregistered.
+     *                      when false (manual Run now), the schedule runs regardless of active flag.
+     */
+    void executeScheduledRun(UUID scheduleId, boolean requireActive) {
         RunSchedule schedule = repository.findById(scheduleId).orElse(null);
-        if (schedule == null || !schedule.getActive()) {
+        if (schedule == null) {
+            cancelTask(scheduleId);
+            return;
+        }
+        if (requireActive && !Boolean.TRUE.equals(schedule.getActive())) {
             cancelTask(scheduleId);
             return;
         }

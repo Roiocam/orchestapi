@@ -1,10 +1,12 @@
 package com.orchestrator.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orchestrator.dto.ExternalNotifyEvent;
 import com.orchestrator.dto.SuiteBatchRunResult;
 import com.orchestrator.model.RunSchedule;
 import com.orchestrator.model.enums.ScheduleNotifyOn;
 import com.orchestrator.model.enums.ScheduleScopeType;
+import com.orchestrator.repository.ScheduleNotifyLogRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
@@ -28,7 +30,11 @@ class ScheduleNotifyServiceTest {
     void setUp() {
         RestClient.Builder builder = mock(RestClient.Builder.class);
         when(builder.build()).thenReturn(mock(RestClient.class));
-        service = new ScheduleNotifyService(builder, "https://example.com/orchestapi");
+        service = new ScheduleNotifyService(
+                builder,
+                "https://example.com/orchestapi",
+                mock(ScheduleNotifyLogRepository.class),
+                new ObjectMapper());
     }
 
     @Test
@@ -90,7 +96,6 @@ class ScheduleNotifyServiceTest {
         assertEquals(1, event.getLabel().get("suiteFailed"));
         assertEquals("bad", event.getLabel().get("failedSuiteNames"));
         assertEquals("platform", event.getLabel().get("team"));
-        // system key wins over extra label collision
         assertEquals("PARTIAL_FAILURE", event.getLabel().get("status"));
         assertEquals("https://example.com/orchestapi/runs?tab=batches&batchId=" + batchId,
                 event.getLabel().get("runsUrl"));

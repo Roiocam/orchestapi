@@ -1,15 +1,20 @@
 package com.orchestrator.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orchestrator.dto.ExternalNotifyEvent;
 import com.orchestrator.dto.SuiteBatchRunResult;
 import com.orchestrator.model.RunSchedule;
+import com.orchestrator.model.ScheduleNotifyLog;
 import com.orchestrator.model.enums.ScheduleNotifyOn;
 import com.orchestrator.model.enums.ScheduleScopeType;
+import com.orchestrator.repository.ScheduleNotifyLogRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,19 +28,26 @@ public class ScheduleNotifyService {
 
     public static final String DEFAULT_EVENT_NAME = "orchestapi.schedule.run";
     public static final String DEFAULT_OPERATOR = "orchestapi";
+    private static final int MAX_BODY_CHARS = 64_000;
 
     private final RestClient restClient;
     private final String publicBaseUrl;
+    private final ScheduleNotifyLogRepository notifyLogRepository;
+    private final ObjectMapper objectMapper;
 
     public ScheduleNotifyService(
             RestClient.Builder restClientBuilder,
-            @Value("${orchestapi.public-base-url:}") String publicBaseUrl) {
+            @Value("${orchestapi.public-base-url:}") String publicBaseUrl,
+            ScheduleNotifyLogRepository notifyLogRepository,
+            ObjectMapper objectMapper) {
         this.restClient = restClientBuilder.build();
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/+$", "");
+        this.notifyLogRepository = notifyLogRepository;
+        this.objectMapper = objectMapper;
     }
 
     /**
-     * Best-effort notify. Failures are logged and never thrown to callers.
+     * Best-effort notify. Failures are logged/persisted and never thrown to callers.
      */
     public void notifyIfNeeded(RunSchedule schedule,
                                String scopeName,
@@ -48,6 +60,14 @@ public class ScheduleNotifyService {
             }
             if (schedule.getNotifyUrl() == null || schedule.getNotifyUrl().isBlank()) {
                 log.warn("Schedule {} has notifyEnabled but notifyUrl is empty — skipping", schedule.getId());
+                persistLog(ScheduleNotifyLog.builder()
+                        .scheduleId(schedule.getId())
+                        .notifyUrl("")
+                        .success(false)
+                        .errorMessage("notifyUrl is empty")
+                        .runStatus(resolveOverallStatus(results))
+                        .batchId(batchId)
+                        .build());
                 return;
             }
 
@@ -61,10 +81,20 @@ public class ScheduleNotifyService {
             }
 
             ExternalNotifyEvent event = buildEvent(schedule, scopeName, environmentName, results, batchId, status);
-            postEvent(schedule.getNotifyUrl().trim(), event);
+            postEvent(schedule, event, status, batchId);
         } catch (Exception e) {
             log.error("Failed to notify for schedule {}: {}",
                     schedule != null ? schedule.getId() : null, e.getMessage(), e);
+            if (schedule != null) {
+                persistLog(ScheduleNotifyLog.builder()
+                        .scheduleId(schedule.getId())
+                        .notifyUrl(schedule.getNotifyUrl() != null ? schedule.getNotifyUrl() : "")
+                        .success(false)
+                        .errorMessage(e.getMessage())
+                        .batchId(batchId)
+                        .runStatus(resolveOverallStatus(results))
+                        .build());
+            }
         }
     }
 
@@ -113,7 +143,6 @@ public class ScheduleNotifyService {
         if (schedule.getNotifyExtraLabels() != null) {
             for (Map.Entry<String, String> entry : schedule.getNotifyExtraLabels().entrySet()) {
                 if (entry.getKey() == null || entry.getKey().isBlank()) continue;
-                // Extra labels add custom keys; do not override system keys.
                 label.putIfAbsent(entry.getKey(), entry.getValue() != null ? entry.getValue() : "");
             }
         }
@@ -152,15 +181,76 @@ public class ScheduleNotifyService {
         return "PARTIAL_FAILURE";
     }
 
-    private void postEvent(String url, ExternalNotifyEvent event) {
-        restClient.post()
-                .uri(url)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(event)
-                .retrieve()
-                .toBodilessEntity();
-        log.info("Posted schedule notify event {} to {} (status={})",
-                event.getEventId(), url, event.getLabel().get("status"));
+    private void postEvent(RunSchedule schedule, ExternalNotifyEvent event, String runStatus, UUID batchId) {
+        String url = schedule.getNotifyUrl().trim();
+        String requestBody = serialize(event);
+        long started = System.currentTimeMillis();
+        ScheduleNotifyLog.ScheduleNotifyLogBuilder logBuilder = ScheduleNotifyLog.builder()
+                .scheduleId(schedule.getId())
+                .eventId(event.getEventId())
+                .eventName(event.getEventName())
+                .businessId(event.getBusinessId())
+                .notifyUrl(url)
+                .requestBody(truncate(requestBody))
+                .runStatus(runStatus)
+                .batchId(batchId);
+
+        try {
+            ResponseEntity<String> response = restClient.post()
+                    .uri(url)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(event)
+                    .retrieve()
+                    .toEntity(String.class);
+            boolean ok = response.getStatusCode().is2xxSuccessful();
+            persistLog(logBuilder
+                    .success(ok)
+                    .httpStatus(response.getStatusCode().value())
+                    .responseBody(truncate(response.getBody()))
+                    .errorMessage(ok ? null : "Non-2xx response")
+                    .durationMs(System.currentTimeMillis() - started)
+                    .build());
+            log.info("Posted schedule notify event {} to {} (http={}, runStatus={})",
+                    event.getEventId(), url, response.getStatusCode().value(), runStatus);
+        } catch (RestClientResponseException e) {
+            persistLog(logBuilder
+                    .success(false)
+                    .httpStatus(e.getStatusCode().value())
+                    .responseBody(truncate(e.getResponseBodyAsString()))
+                    .errorMessage(e.getMessage())
+                    .durationMs(System.currentTimeMillis() - started)
+                    .build());
+            log.error("Notify HTTP error for schedule {}: {}", schedule.getId(), e.getMessage());
+        } catch (Exception e) {
+            persistLog(logBuilder
+                    .success(false)
+                    .errorMessage(e.getMessage())
+                    .durationMs(System.currentTimeMillis() - started)
+                    .build());
+            log.error("Notify failed for schedule {}: {}", schedule.getId(), e.getMessage());
+        }
+    }
+
+    private void persistLog(ScheduleNotifyLog entry) {
+        try {
+            notifyLogRepository.save(entry);
+        } catch (Exception e) {
+            log.error("Failed to persist notify log: {}", e.getMessage(), e);
+        }
+    }
+
+    private String serialize(ExternalNotifyEvent event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (Exception e) {
+            return "{\"error\":\"failed to serialize notify event\"}";
+        }
+    }
+
+    private static String truncate(String value) {
+        if (value == null) return null;
+        if (value.length() <= MAX_BODY_CHARS) return value;
+        return value.substring(0, MAX_BODY_CHARS) + "…[truncated]";
     }
 
     private String buildRunsUrl(UUID scheduleId, UUID batchId) {

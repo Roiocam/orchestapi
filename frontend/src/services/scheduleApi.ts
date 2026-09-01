@@ -5,6 +5,9 @@ import type {
   RunScheduleRequest,
   CronPreviewResponse,
   ScheduleListParams,
+  ScheduleNotifyLogResponse,
+  ScheduleNotifyLogListParams,
+  ScheduleRunNowResponse,
 } from '../types/run'
 
 const BASE = '/api/run-schedules'
@@ -31,6 +34,15 @@ export const scheduleApi = {
   toggle: (id: string) =>
     axios.patch<RunScheduleResponse>(`${BASE}/${id}/toggle`).then(r => r.data),
 
+  runNow: (id: string) =>
+    axios.post<ScheduleRunNowResponse>(`${BASE}/${id}/run`).then(r => r.data),
+
   preview: (cron: string) =>
     axios.get<CronPreviewResponse>(`${BASE}/preview`, { params: { cron } }).then(r => r.data),
+
+  listNotifyLogs: (params: ScheduleNotifyLogListParams = {}) =>
+    axios.get<PageResponse<ScheduleNotifyLogResponse>>(`${BASE}/notify-logs`, { params }).then(r => r.data),
+
+  getNotifyLog: (id: string) =>
+    axios.get<ScheduleNotifyLogResponse>(`${BASE}/notify-logs/${id}`).then(r => r.data),
 }

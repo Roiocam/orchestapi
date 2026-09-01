@@ -30,12 +30,13 @@ import {
   SearchOutlined,
   CloseCircleFilled,
   StopOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons'
 import type { FilterDropdownProps } from 'antd/es/table/interface'
 import type { Dayjs } from 'dayjs'
 import cronstrue from 'cronstrue'
 import type { PageResponse } from '../types/environment'
-import type { TestRunResponse, RunScheduleResponse, RunScheduleRequest, CronPreviewResponse, RunListParams } from '../types/run'
+import type { TestRunResponse, RunScheduleResponse, RunScheduleRequest, CronPreviewResponse, RunListParams, ScheduleNotifyLogResponse } from '../types/run'
 import type { BatchRunResponse, BatchRunDetailResponse } from '../types/batch'
 import type { CollectionSuiteRunResult } from '../types/project'
 import type { SuiteExecutionResult } from '../services/testSuiteApi'
@@ -219,6 +220,23 @@ export default function RunsPage() {
   const [schedulePage, setSchedulePage] = useState(1)
   const [schedulePageSize, setSchedulePageSize] = useState(10)
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0)
+  const [runningNowIds, setRunningNowIds] = useState<Set<string>>(new Set())
+
+  // Notify logs
+  const [notifyLogData, setNotifyLogData] = useState<PageResponse<ScheduleNotifyLogResponse>>({
+    content: [],
+    page: 0,
+    size: 10,
+    totalElements: 0,
+    totalPages: 0,
+  })
+  const [notifyLogLoading, setNotifyLogLoading] = useState(false)
+  const [notifyLogPage, setNotifyLogPage] = useState(1)
+  const [notifyLogPageSize, setNotifyLogPageSize] = useState(10)
+  const [notifyLogSuccessFilter, setNotifyLogSuccessFilter] = useState<boolean | undefined>(undefined)
+  const [notifyLogScheduleFilter, setNotifyLogScheduleFilter] = useState<string | undefined>(undefined)
+  const [notifyLogRefreshKey, setNotifyLogRefreshKey] = useState(0)
+  const [notifyLogDrawer, setNotifyLogDrawer] = useState<ScheduleNotifyLogResponse | null>(null)
 
   // Schedule modal
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
@@ -315,8 +333,8 @@ export default function RunsPage() {
       setScheduleLoading(true)
       try {
         const result = await scheduleApi.list({
-          page: schedulePage - 1,
-          size: schedulePageSize,
+          page: activeTab === 'notifications' ? 0 : schedulePage - 1,
+          size: activeTab === 'notifications' ? 200 : schedulePageSize,
         })
         if (!cancelled) setScheduleData(result)
       } catch {
@@ -327,7 +345,38 @@ export default function RunsPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [schedulePage, schedulePageSize, scheduleRefreshKey])
+  }, [schedulePage, schedulePageSize, scheduleRefreshKey, activeTab])
+
+  // ──── Notify logs: data fetch ────
+  useEffect(() => {
+    if (activeTab !== 'notifications') return
+    let cancelled = false
+    const load = async () => {
+      setNotifyLogLoading(true)
+      try {
+        const result = await scheduleApi.listNotifyLogs({
+          page: notifyLogPage - 1,
+          size: notifyLogPageSize,
+          scheduleId: notifyLogScheduleFilter,
+          success: notifyLogSuccessFilter,
+        })
+        if (!cancelled) setNotifyLogData(result)
+      } catch {
+        if (!cancelled) message.error('Failed to load notify logs')
+      } finally {
+        if (!cancelled) setNotifyLogLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [
+    activeTab,
+    notifyLogPage,
+    notifyLogPageSize,
+    notifyLogSuccessFilter,
+    notifyLogScheduleFilter,
+    notifyLogRefreshKey,
+  ])
 
   // ──── Load dropdown options for schedule modal ────
   const loadDropdownOptions = useCallback(async () => {
@@ -557,6 +606,31 @@ export default function RunsPage() {
     } catch {
       message.error('Failed to toggle schedule')
       setScheduleRefreshKey((k) => k + 1) // revert by refetching
+    }
+  }
+
+  const handleRunNow = async (id: string) => {
+    setRunningNowIds((prev) => new Set(prev).add(id))
+    try {
+      await scheduleApi.runNow(id)
+      message.success('Schedule run started')
+      setScheduleRefreshKey((k) => k + 1)
+      setNotifyLogRefreshKey((k) => k + 1)
+      setRefreshKey((k) => k + 1)
+      setBatchRefreshKey((k) => k + 1)
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { error?: string } } }
+        message.error(axiosErr.response?.data?.error ?? 'Failed to start schedule')
+      } else {
+        message.error('Failed to start schedule')
+      }
+    } finally {
+      setRunningNowIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }
 
@@ -973,9 +1047,17 @@ export default function RunsPage() {
     {
       title: 'Actions',
       key: 'actions',
-      width: 100,
+      width: 140,
       render: (_: unknown, record: RunScheduleResponse) => (
         <Space>
+          <Tooltip title="Run now">
+            <Button
+              type="text"
+              icon={<PlayCircleOutlined />}
+              loading={runningNowIds.has(record.id)}
+              onClick={() => handleRunNow(record.id)}
+            />
+          </Tooltip>
           <Tooltip title="Edit">
             <Button
               type="text"
@@ -1004,7 +1086,7 @@ export default function RunsPage() {
           <div className="page-header-kicker">Execution</div>
           <h1 className="page-header-title">Runs</h1>
           <p className="page-header-desc">
-            Suite run history, collection/project batches, and schedules.
+            Suite run history, collection/project batches, schedules, and notify delivery logs.
           </p>
         </div>
       </div>
@@ -1235,8 +1317,162 @@ export default function RunsPage() {
               </div>
             ),
           },
+          {
+            key: 'notifications',
+            label: 'Notifications',
+            children: (
+              <div>
+                <div style={{ marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <Select
+                    allowClear
+                    placeholder="Filter by result"
+                    style={{ width: 160 }}
+                    value={notifyLogSuccessFilter}
+                    onChange={(v) => {
+                      setNotifyLogSuccessFilter(v)
+                      setNotifyLogPage(1)
+                    }}
+                    options={[
+                      { value: true, label: 'Success' },
+                      { value: false, label: 'Failed' },
+                    ]}
+                  />
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder="Filter by schedule"
+                    style={{ width: 260 }}
+                    value={notifyLogScheduleFilter}
+                    onChange={(v) => {
+                      setNotifyLogScheduleFilter(v)
+                      setNotifyLogPage(1)
+                    }}
+                    optionFilterProp="label"
+                    options={scheduleData.content.map((s) => ({
+                      value: s.id,
+                      label: `${s.scopeName ?? s.suiteName ?? s.id} (${s.scopeType})`,
+                    }))}
+                  />
+                  <Button onClick={() => setNotifyLogRefreshKey((k) => k + 1)}>Refresh</Button>
+                </div>
+                <Table
+                  rowKey="id"
+                  loading={notifyLogLoading}
+                  dataSource={notifyLogData.content}
+                  style={{ background: '#fff', borderRadius: 8, padding: '0 0 8px' }}
+                  onRow={(record) => ({
+                    onClick: () => setNotifyLogDrawer(record),
+                    style: { cursor: 'pointer' },
+                  })}
+                  columns={[
+                    {
+                      title: 'Time',
+                      dataIndex: 'createdAt',
+                      width: 180,
+                      render: (v: string) => new Date(v).toLocaleString(),
+                    },
+                    {
+                      title: 'Result',
+                      dataIndex: 'success',
+                      width: 100,
+                      render: (ok: boolean) => (
+                        <Tag color={ok ? 'success' : 'error'}>{ok ? 'SUCCESS' : 'FAILED'}</Tag>
+                      ),
+                    },
+                    {
+                      title: 'HTTP',
+                      dataIndex: 'httpStatus',
+                      width: 80,
+                      render: (v: number | null) => v ?? '—',
+                    },
+                    {
+                      title: 'Run status',
+                      dataIndex: 'runStatus',
+                      width: 140,
+                      render: (v: string | null) => v ?? '—',
+                    },
+                    {
+                      title: 'Event',
+                      dataIndex: 'eventName',
+                      ellipsis: true,
+                      render: (v: string | null) => v ?? '—',
+                    },
+                    {
+                      title: 'URL',
+                      dataIndex: 'notifyUrl',
+                      ellipsis: true,
+                    },
+                    {
+                      title: 'Duration',
+                      dataIndex: 'durationMs',
+                      width: 100,
+                      render: (v: number) => `${v} ms`,
+                    },
+                  ]}
+                  pagination={{
+                    current: notifyLogPage,
+                    pageSize: notifyLogPageSize,
+                    total: notifyLogData.totalElements,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '50'],
+                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
+                    style: { padding: '0 16px' },
+                  }}
+                  onChange={(pagination) => {
+                    setNotifyLogPage(pagination.current ?? 1)
+                    setNotifyLogPageSize(pagination.pageSize ?? 10)
+                  }}
+                />
+              </div>
+            ),
+          },
         ]}
       />
+
+      <Drawer
+        title="Notify delivery"
+        open={!!notifyLogDrawer}
+        onClose={() => setNotifyLogDrawer(null)}
+        width={720}
+        destroyOnClose
+      >
+        {notifyLogDrawer && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <Tag color={notifyLogDrawer.success ? 'success' : 'error'}>
+                {notifyLogDrawer.success ? 'SUCCESS' : 'FAILED'}
+              </Tag>
+              {notifyLogDrawer.httpStatus != null && <Tag>HTTP {notifyLogDrawer.httpStatus}</Tag>}
+              {notifyLogDrawer.runStatus && <Tag>{notifyLogDrawer.runStatus}</Tag>}
+            </div>
+            <div><Text type="secondary">Time</Text><div>{new Date(notifyLogDrawer.createdAt).toLocaleString()}</div></div>
+            <div><Text type="secondary">URL</Text><div style={{ wordBreak: 'break-all' }}>{notifyLogDrawer.notifyUrl}</div></div>
+            <div><Text type="secondary">Event</Text><div>{notifyLogDrawer.eventName ?? '—'} / {notifyLogDrawer.eventId ?? '—'}</div></div>
+            <div><Text type="secondary">Business ID</Text><div>{notifyLogDrawer.businessId ?? '—'}</div></div>
+            <div><Text type="secondary">Duration</Text><div>{notifyLogDrawer.durationMs} ms</div></div>
+            {notifyLogDrawer.errorMessage && (
+              <div>
+                <Text type="secondary">Error</Text>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', background: '#fff1f0', padding: 8, borderRadius: 6 }}>
+                  {notifyLogDrawer.errorMessage}
+                </pre>
+              </div>
+            )}
+            <div>
+              <Text type="secondary">Request body</Text>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', background: '#f8fafc', padding: 8, borderRadius: 6, maxHeight: 280, overflow: 'auto' }}>
+                {notifyLogDrawer.requestBody ?? '—'}
+              </pre>
+            </div>
+            <div>
+              <Text type="secondary">Response body</Text>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', background: '#f8fafc', padding: 8, borderRadius: 6, maxHeight: 280, overflow: 'auto' }}>
+                {notifyLogDrawer.responseBody ?? '—'}
+              </pre>
+            </div>
+          </div>
+        )}
+      </Drawer>
 
       {/* Batch Detail Drawer */}
       <Drawer
