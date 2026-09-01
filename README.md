@@ -323,7 +323,7 @@ Define what action to take for each HTTP status code. Handlers are evaluated in 
 |--------|-------------|--------------|
 | `SUCCESS` | Mark step as successful, proceed to dependents | — |
 | `ERROR` | Mark step as failed, skip dependents | — |
-| `RETRY` | Re-execute the step after a delay | `retryCount` (max attempts), `retryDelaySeconds` (delay between retries) |
+| `RETRY` | Re-execute the step after a delay. If the step also has response validations, retries stop early as soon as all validations pass (poll-until-ready). | `retryCount` (max attempts), `retryDelaySeconds` (delay between retries) |
 | `FIRE_SIDE_EFFECT` | Execute another step as a side effect | `sideEffectStepId` (which step to trigger) |
 
 **Example setup:**

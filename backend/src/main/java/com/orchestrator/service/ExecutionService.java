@@ -1378,18 +1378,42 @@ public class ExecutionService {
 
             // Check if the response code matches a RETRY handler
             boolean shouldRetry = false;
+            StepResponseHandler matchedRetryHandler = null;
             if (step.getResponseHandlers() != null) {
                 List<StepResponseHandler> sorted = step.getResponseHandlers().stream()
                         .sorted(Comparator.comparingInt(StepResponseHandler::getPriority))
                         .toList();
                 for (StepResponseHandler handler : sorted) {
                     if (matchesCode(handler.getMatchCode(), lastResult.getResponseCode())) {
-                        if (handler.getAction() == ResponseAction.RETRY && attempt < handler.getRetryCount()) {
-                            shouldRetry = true;
-                            retryDelaySeconds = handler.getRetryDelaySeconds();
+                        if (handler.getAction() == ResponseAction.RETRY) {
+                            matchedRetryHandler = handler;
+                            if (attempt < handler.getRetryCount()) {
+                                shouldRetry = true;
+                                retryDelaySeconds = handler.getRetryDelaySeconds();
+                            }
                         }
                         break; // First matching handler wins
                     }
+                }
+            }
+
+            // Poll-until-ready: when RETRY matches and body validations all pass, succeed early
+            // instead of burning the full retry budget on a terminal HTTP 200.
+            if (matchedRetryHandler != null
+                    && step.getResponseValidations() != null
+                    && !step.getResponseValidations().isEmpty()) {
+                List<ResponseValidationResultDto> valResults = responseValidationService.runValidations(
+                        step.getResponseValidations(),
+                        lastResult.getResponseBody(),
+                        lastResult.getResponseHeaders() != null
+                                ? lastResult.getResponseHeaders() : Collections.emptyMap(),
+                        env, allExtractedVars, this);
+                lastResult.setResponseValidationResults(valResults);
+                boolean allPassed = valResults.stream().allMatch(ResponseValidationResultDto::isPassed);
+                if (allPassed) {
+                    lastResult.setStatus(attempt > 0 ? "RETRIED" : "SUCCESS");
+                    lastResult.setErrorMessage(null);
+                    break;
                 }
             }
 
