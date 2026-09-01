@@ -1,6 +1,7 @@
 package com.orchestrator.service;
 
 import com.orchestrator.dto.BatchRunDetailResponse;
+import com.orchestrator.dto.BatchRunExportResponse;
 import com.orchestrator.dto.BatchRunResponse;
 import com.orchestrator.dto.CollectionSuiteRunResult;
 import com.orchestrator.dto.PageResponse;
@@ -32,6 +33,7 @@ public class BatchRunService {
     private final BatchRunRepository repository;
     private final TestRunRepository testRunRepository;
     private final TestSuiteRepository suiteRepository;
+    private final RunService runService;
 
     @Transactional
     public BatchRun createBatch(BatchScopeType scopeType,
@@ -113,6 +115,16 @@ public class BatchRunService {
         return BatchRunDetailResponse.builder()
                 .batch(toResponse(batch))
                 .runs(runs)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public BatchRunExportResponse export(UUID id) {
+        BatchRun batch = repository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Batch not found: " + id));
+        return BatchRunExportResponse.builder()
+                .batch(toResponse(batch))
+                .runs(runService.findDetailsByBatchId(id))
                 .build();
     }
 

@@ -3,6 +3,7 @@ import type { PageResponse } from '../types/environment'
 import type {
   BatchListParams,
   BatchRunDetailResponse,
+  BatchRunExportResponse,
   BatchRunResponse,
   BatchStreamHandlers,
 } from '../types/batch'
@@ -16,6 +17,9 @@ export const batchApi = {
 
   get: (id: string) =>
     axios.get<BatchRunDetailResponse>(`${BASE}/${id}`).then((r) => r.data),
+
+  export: (id: string) =>
+    axios.get<BatchRunExportResponse>(`${BASE}/${id}/export`).then((r) => r.data),
 
   cancel: (id: string) =>
     axios.post<BatchRunResponse>(`${BASE}/${id}/cancel`).then((r) => r.data),

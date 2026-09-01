@@ -7,6 +7,7 @@ import EnvironmentDetailPage from './pages/EnvironmentDetailPage'
 import TestSuitesPage from './pages/TestSuitesPage'
 import TestSuiteDetailPage from './pages/TestSuiteDetailPage'
 import RunsPage from './pages/RunsPage'
+import BatchDetailPage from './pages/BatchDetailPage'
 import MockServerPage from './pages/MockServerPage'
 import WebhookPage from './pages/WebhookPage'
 import ProjectsPage from './pages/ProjectsPage'
@@ -107,6 +108,7 @@ function App() {
                 <Route path="/test-suites" element={<TestSuitesPage />} />
                 <Route path="/test-suites/:id" element={<TestSuiteDetailPage />} />
                 <Route path="/runs" element={<RunsPage />} />
+                <Route path="/runs/batches/:id" element={<BatchDetailPage />} />
                 <Route path="/mock-server" element={<MockServerPage />} />
                 <Route path="/mock-server/:serverId" element={<MockServerPage />} />
                 <Route path="/webhooks" element={<WebhookPage />} />

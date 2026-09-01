@@ -1,6 +1,7 @@
 package com.orchestrator.controller;
 
 import com.orchestrator.dto.BatchRunDetailResponse;
+import com.orchestrator.dto.BatchRunExportResponse;
 import com.orchestrator.dto.BatchRunResponse;
 import com.orchestrator.dto.CollectionSuiteRunResult;
 import com.orchestrator.dto.PageResponse;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -64,6 +66,15 @@ public class BatchController {
     @GetMapping("/{id}")
     public BatchRunDetailResponse findById(@PathVariable UUID id) {
         return batchRunService.findById(id);
+    }
+
+    @GetMapping("/{id}/export")
+    public ResponseEntity<BatchRunExportResponse> export(@PathVariable UUID id) {
+        BatchRunExportResponse export = batchRunService.export(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=batch-" + id + ".json")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(export);
     }
 
     @GetMapping(value = "/{id}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

@@ -111,7 +111,7 @@ export function useRunCollection() {
     setRunning(false)
     setOpen(false)
     resetProgress()
-    navigate(`/runs?tab=batches&batchId=${data.batchId}`)
+    navigate(`/runs/batches/${data.batchId}`)
   }, [navigate, resetProgress])
 
   const connectStream = useCallback((id: string) => {

@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -156,6 +157,13 @@ public class RunService {
     @Transactional(readOnly = true)
     public TestRunResponse export(UUID id) {
         return findById(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TestRunResponse> findDetailsByBatchId(UUID batchId) {
+        return repository.findByBatchIdOrderByStartedAtAsc(batchId).stream()
+                .map(this::toDetailResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
