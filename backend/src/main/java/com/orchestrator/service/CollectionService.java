@@ -100,10 +100,15 @@ public class CollectionService {
         }
         ApiCollection collection = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Collection not found: " + id));
-        if (suiteRepository.countByCollectionId(id) > 0) {
-            throw new IllegalArgumentException("Cannot delete collection that still has test suites");
+        LocalDateTime now = LocalDateTime.now();
+        List<TestSuite> suites = suiteRepository.findByCollectionIdOrderByNameAsc(id);
+        for (TestSuite suite : suites) {
+            suite.setDeletedAt(now);
         }
-        collection.setDeletedAt(LocalDateTime.now());
+        if (!suites.isEmpty()) {
+            suiteRepository.saveAll(suites);
+        }
+        collection.setDeletedAt(now);
         repository.save(collection);
     }
 }

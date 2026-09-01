@@ -1,5 +1,6 @@
 package com.orchestrator;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.orchestrator.model.DefaultHierarchyIds;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,6 +11,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -24,6 +26,9 @@ class ProjectCollectionHierarchyIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Test
     void defaultProjectAndCollectionExistAfterMigrationSeed() throws Exception {
@@ -51,5 +56,51 @@ class ProjectCollectionHierarchyIntegrationTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.collectionId").value(DefaultHierarchyIds.DEFAULT_COLLECTION_ID.toString()));
+    }
+
+    @Test
+    void deleteCollectionCascadesSoftDeleteOfSuites() throws Exception {
+        String suffix = String.valueOf(System.nanoTime());
+        String collectionBody = """
+                {
+                  "projectId": "%s",
+                  "name": "Cascade Collection %s",
+                  "description": ""
+                }
+                """.formatted(DefaultHierarchyIds.DEFAULT_PROJECT_ID, suffix);
+
+        String collectionJson = mockMvc.perform(post("/api/collections")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(collectionBody))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String collectionId = objectMapper.readTree(collectionJson).path("id").asText();
+
+        String suiteBody = """
+                {
+                  "name": "Cascade Suite %s",
+                  "description": "",
+                  "collectionId": "%s"
+                }
+                """.formatted(suffix, collectionId);
+
+        String suiteJson = mockMvc.perform(post("/api/test-suites")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(suiteBody))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String suiteId = objectMapper.readTree(suiteJson).path("id").asText();
+
+        mockMvc.perform(delete("/api/collections/" + collectionId))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/collections/" + collectionId))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/test-suites/" + suiteId))
+                .andExpect(status().isNotFound());
     }
 }

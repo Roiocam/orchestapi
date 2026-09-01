@@ -241,6 +241,24 @@ export default function TestSuiteDetailPage() {
     }
   }
 
+  const handleDeleteSuite = async () => {
+    if (!id || isNew) return
+    try {
+      await testSuiteApi.delete(id)
+      message.success(t('pages.testSuiteDetail.deleted'))
+      bumpSuiteTree()
+      await refreshCollections()
+      navigate('/test-suites')
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { error?: string } } }
+        message.error(axiosErr.response?.data?.error ?? t('pages.testSuiteDetail.failedDelete'))
+      } else {
+        message.error(t('pages.testSuiteDetail.failedDelete'))
+      }
+    }
+  }
+
   const handleDeleteStep = async (stepId: string) => {
     try {
       await testStepApi.delete(id!, stepId)
@@ -564,6 +582,16 @@ export default function TestSuiteDetailPage() {
                 {t('pages.testSuiteDetail.schedule', { count: activeScheduleCount })}
               </Tag>
             )}
+            <Popconfirm
+              title={t('pages.testSuiteDetail.deleteConfirm')}
+              onConfirm={handleDeleteSuite}
+              okText={t('common.delete')}
+              okType="danger"
+            >
+              <Button danger icon={<DeleteOutlined />}>
+                {t('common.delete')}
+              </Button>
+            </Popconfirm>
           </Space>
         )}
       </div>

@@ -230,21 +230,72 @@ export default function SuiteExplorer() {
     })
   }
 
-  const collectionMenu = (cid: string): MenuProps => ({
-    items: [
-      {
-        key: 'new-suite',
-        label: t('components.suiteExplorer.newSuite'),
-        onClick: () => newSuiteInCollection(cid),
+  const handleDeleteCollection = (cid: string) => {
+    const collection = collections.find((c) => c.id === cid)
+    if (!collection || collection.isDefault) return
+    const suiteCount = suiteCountForCollection(cid)
+    Modal.confirm({
+      title: t('components.suiteExplorer.deleteCollectionTitle'),
+      content:
+        suiteCount > 0
+          ? t('components.suiteExplorer.deleteCollectionWithSuites', { count: suiteCount })
+          : t('components.suiteExplorer.deleteCollectionConfirm'),
+      okText: t('common.delete'),
+      okType: 'danger',
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        try {
+          await collectionApi.delete(cid)
+          message.success(t('components.suiteExplorer.collectionDeleted'))
+          if (collectionId === cid) {
+            setCollectionId(null)
+          }
+          await refreshCollections()
+          bumpSuiteTree()
+          if (activeSuiteId && suites.some((s) => s.id === activeSuiteId && s.collectionId === cid)) {
+            navigate('/test-suites')
+          }
+        } catch (err: unknown) {
+          if (err && typeof err === 'object' && 'response' in err) {
+            const axiosErr = err as { response?: { data?: { error?: string } } }
+            message.error(axiosErr.response?.data?.error ?? t('components.suiteExplorer.failedDeleteCollection'))
+          } else {
+            message.error(t('components.suiteExplorer.failedDeleteCollection'))
+          }
+          throw err
+        }
       },
-      {
-        key: 'run-collection',
-        label: t('components.suiteExplorer.runCollection'),
-        disabled: runningCollection,
-        onClick: () => runCollection(cid),
-      },
-    ],
-  })
+    })
+  }
+
+  const collectionMenu = (cid: string): MenuProps => {
+    const collection = collections.find((c) => c.id === cid)
+    return {
+      items: [
+        {
+          key: 'new-suite',
+          label: t('components.suiteExplorer.newSuite'),
+          onClick: () => newSuiteInCollection(cid),
+        },
+        {
+          key: 'run-collection',
+          label: t('components.suiteExplorer.runCollection'),
+          disabled: runningCollection,
+          onClick: () => runCollection(cid),
+        },
+        {
+          type: 'divider',
+        },
+        {
+          key: 'delete-collection',
+          label: t('common.delete'),
+          danger: true,
+          disabled: collection?.isDefault,
+          onClick: () => handleDeleteCollection(cid),
+        },
+      ],
+    }
+  }
 
   const toolbarMenu: MenuProps = {
     items: [
