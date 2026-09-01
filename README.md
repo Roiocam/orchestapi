@@ -585,6 +585,40 @@ Use **Preview** to see the next fire times before saving.
 - Collection / project schedules create **one run history row per suite**, sharing the same `scheduleId`
 - Suites in a batch run **sequentially**; a failed suite does not stop later suites (same continue-on-failure idea as steps inside a suite)
 - Empty collection / project scopes complete as a successful no-op (same idea as an empty suite)
+- Optional **notify**: HTTP POST to an external notification rules engine after the batch finishes
+
+### Schedule notify (external event engine)
+
+When enabled on a schedule, OrchestAPI POSTs:
+
+```json
+{
+  "eventId": "...",
+  "businessId": "<scheduleId or override>",
+  "eventName": "orchestapi.schedule.run",
+  "timestamp": 1735689600000,
+  "operator": "orchestapi",
+  "label": {
+    "scopeType": "COLLECTION",
+    "scopeName": "MCP",
+    "status": "PARTIAL_FAILURE",
+    "suiteTotal": 3,
+    "suiteSuccess": 2,
+    "suiteFailed": 1,
+    "failedSuiteNames": "suite-a",
+    "runsUrl": "https://…/orchestapi/runs?tab=batches&batchId=…"
+  }
+}
+```
+
+| Setting | Meaning |
+|---------|---------|
+| **Notify URL** | Engine inbound HTTP endpoint |
+| **Notify when** | `ON_FAILURE` (default) or `ALWAYS` |
+| **Event / business / operator** | Optional overrides |
+| **Extra labels** | JSON object merged into `label` (cannot override system keys) |
+
+Set `PUBLIC_BASE_URL` (or `orchestapi.public-base-url`) so `label.runsUrl` is absolute. Notify failures are logged only — they do not fail the scheduled run.
 
 ---
 

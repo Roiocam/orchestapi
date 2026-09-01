@@ -14,6 +14,7 @@ import com.orchestrator.model.RunSchedule;
 import com.orchestrator.model.TestRun;
 import com.orchestrator.model.TestSuite;
 import com.orchestrator.model.enums.BatchScopeType;
+import com.orchestrator.model.enums.ScheduleNotifyOn;
 import com.orchestrator.model.enums.ScheduleScopeType;
 import com.orchestrator.model.enums.TriggerType;
 import com.orchestrator.repository.ApiCollectionRepository;
@@ -34,7 +35,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
@@ -53,6 +56,7 @@ public class ScheduleService {
     private final ExecutionService executionService;
     private final TaskScheduler taskScheduler;
     private final BatchExecutionService batchExecutionService;
+    private final ScheduleNotifyService scheduleNotifyService;
 
     private final ConcurrentHashMap<UUID, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
 
@@ -64,7 +68,8 @@ public class ScheduleService {
                            RunService runService,
                            @Lazy ExecutionService executionService,
                            TaskScheduler taskScheduler,
-                           @Lazy BatchExecutionService batchExecutionService) {
+                           @Lazy BatchExecutionService batchExecutionService,
+                           ScheduleNotifyService scheduleNotifyService) {
         this.repository = repository;
         this.suiteRepository = suiteRepository;
         this.collectionRepository = collectionRepository;
@@ -74,6 +79,7 @@ public class ScheduleService {
         this.executionService = executionService;
         this.taskScheduler = taskScheduler;
         this.batchExecutionService = batchExecutionService;
+        this.scheduleNotifyService = scheduleNotifyService;
     }
 
     @PostConstruct
@@ -103,6 +109,7 @@ public class ScheduleService {
                 .active(true)
                 .nextRunAt(computeNextRunAt(cron))
                 .build();
+        applyNotifyConfig(schedule, req);
 
         schedule = repository.save(schedule);
         registerTask(schedule);
@@ -152,6 +159,7 @@ public class ScheduleService {
         schedule.setCronExpression(cron);
         schedule.setDescription(req.getDescription());
         schedule.setNextRunAt(schedule.getActive() ? computeNextRunAt(cron) : null);
+        applyNotifyConfig(schedule, req);
 
         schedule = repository.save(schedule);
 
@@ -258,12 +266,13 @@ public class ScheduleService {
         if (targets.isEmpty()) {
             log.info("Scheduled run for {} {} has no suites — completing as empty success (schedule {})",
                     schedule.getScopeType(), schedule.getScopeId(), scheduleId);
+            UUID batchId = null;
+            ScopeDisplay display = resolveScopeDisplay(schedule.getScopeType(), schedule.getScopeId());
             if (schedule.getScopeType() != ScheduleScopeType.SUITE) {
-                ScopeDisplay display = resolveScopeDisplay(schedule.getScopeType(), schedule.getScopeId());
                 BatchScopeType batchScope = schedule.getScopeType() == ScheduleScopeType.COLLECTION
                         ? BatchScopeType.COLLECTION
                         : BatchScopeType.PROJECT;
-                UUID batchId = batchExecutionService.createScheduledBatch(
+                batchId = batchExecutionService.createScheduledBatch(
                         batchScope,
                         schedule.getScopeId(),
                         display.name(),
@@ -272,30 +281,38 @@ public class ScheduleService {
                         List.of());
                 batchExecutionService.executeEmptyBatch(batchId);
             }
+            scheduleNotifyService.notifyIfNeeded(
+                    schedule,
+                    display.name(),
+                    resolveEnvironmentName(schedule.getEnvironmentId()),
+                    List.of(),
+                    batchId);
             touchScheduleTimestamps(schedule);
             return;
         }
 
+        ScopeDisplay display = resolveScopeDisplay(schedule.getScopeType(), schedule.getScopeId());
+        List<SuiteBatchRunResult> results;
+        UUID batchId = null;
         if (schedule.getScopeType() == ScheduleScopeType.SUITE) {
-            List<SuiteBatchRunResult> results = executeSuitesSequentially(
+            results = executeSuitesSequentially(
                     targets,
                     schedule.getEnvironmentId(),
                     TriggerType.SCHEDULED,
                     scheduleId);
             logScheduledResults(scheduleId, results);
         } else {
-            ScopeDisplay display = resolveScopeDisplay(schedule.getScopeType(), schedule.getScopeId());
             BatchScopeType batchScope = schedule.getScopeType() == ScheduleScopeType.COLLECTION
                     ? BatchScopeType.COLLECTION
                     : BatchScopeType.PROJECT;
-            UUID batchId = batchExecutionService.createScheduledBatch(
+            batchId = batchExecutionService.createScheduledBatch(
                     batchScope,
                     schedule.getScopeId(),
                     display.name(),
                     schedule.getEnvironmentId(),
                     scheduleId,
                     targets);
-            batchExecutionService.executeBatch(
+            results = batchExecutionService.executeBatchAndCollect(
                     batchId,
                     targets,
                     schedule.getEnvironmentId(),
@@ -303,6 +320,12 @@ public class ScheduleService {
                     scheduleId);
         }
 
+        scheduleNotifyService.notifyIfNeeded(
+                schedule,
+                display.name(),
+                resolveEnvironmentName(schedule.getEnvironmentId()),
+                results,
+                batchId);
         touchScheduleTimestamps(schedule);
     }
 
@@ -548,11 +571,59 @@ public class ScheduleService {
                 .cronExpression(schedule.getCronExpression())
                 .active(schedule.getActive())
                 .description(schedule.getDescription())
+                .notifyEnabled(Boolean.TRUE.equals(schedule.getNotifyEnabled()))
+                .notifyUrl(schedule.getNotifyUrl())
+                .notifyOn(schedule.getNotifyOn() != null ? schedule.getNotifyOn().name() : ScheduleNotifyOn.ON_FAILURE.name())
+                .notifyEventName(schedule.getNotifyEventName())
+                .notifyBusinessId(schedule.getNotifyBusinessId())
+                .notifyOperator(schedule.getNotifyOperator())
+                .notifyExtraLabels(schedule.getNotifyExtraLabels() != null
+                        ? schedule.getNotifyExtraLabels()
+                        : Map.of())
                 .lastRunAt(schedule.getLastRunAt())
                 .nextRunAt(schedule.getNextRunAt())
                 .createdAt(schedule.getCreatedAt())
                 .updatedAt(schedule.getUpdatedAt())
                 .build();
+    }
+
+    private void applyNotifyConfig(RunSchedule schedule, RunScheduleRequest req) {
+        schedule.setNotifyEnabled(Boolean.TRUE.equals(req.getNotifyEnabled()));
+        schedule.setNotifyUrl(blankToNull(req.getNotifyUrl()));
+        schedule.setNotifyOn(parseNotifyOn(req.getNotifyOn()));
+        schedule.setNotifyEventName(blankToNull(req.getNotifyEventName()));
+        schedule.setNotifyBusinessId(blankToNull(req.getNotifyBusinessId()));
+        schedule.setNotifyOperator(blankToNull(req.getNotifyOperator()));
+        Map<String, String> labels = new LinkedHashMap<>();
+        if (req.getNotifyExtraLabels() != null) {
+            req.getNotifyExtraLabels().forEach((k, v) -> {
+                if (k != null && !k.isBlank()) {
+                    labels.put(k.trim(), v != null ? v : "");
+                }
+            });
+        }
+        schedule.setNotifyExtraLabels(labels);
+
+        if (Boolean.TRUE.equals(schedule.getNotifyEnabled())
+                && (schedule.getNotifyUrl() == null || schedule.getNotifyUrl().isBlank())) {
+            throw new IllegalArgumentException("notifyUrl is required when notifyEnabled is true");
+        }
+    }
+
+    private static ScheduleNotifyOn parseNotifyOn(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return ScheduleNotifyOn.ON_FAILURE;
+        }
+        try {
+            return ScheduleNotifyOn.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid notifyOn: " + raw + " (expected ALWAYS or ON_FAILURE)");
+        }
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank()) return null;
+        return value.trim();
     }
 
     private record ScopeDisplay(String name, int suiteCount) {}

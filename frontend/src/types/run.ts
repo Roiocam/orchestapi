@@ -30,6 +30,13 @@ export interface RunScheduleResponse {
   cronExpression: string
   active: boolean
   description: string | null
+  notifyEnabled: boolean
+  notifyUrl: string | null
+  notifyOn: 'ALWAYS' | 'ON_FAILURE'
+  notifyEventName: string | null
+  notifyBusinessId: string | null
+  notifyOperator: string | null
+  notifyExtraLabels: Record<string, string>
   lastRunAt: string | null
   nextRunAt: string | null
   createdAt: string
@@ -42,6 +49,13 @@ export interface RunScheduleRequest {
   environmentId: string
   cronExpression: string
   description?: string
+  notifyEnabled?: boolean
+  notifyUrl?: string
+  notifyOn?: 'ALWAYS' | 'ON_FAILURE'
+  notifyEventName?: string
+  notifyBusinessId?: string
+  notifyOperator?: string
+  notifyExtraLabels?: Record<string, string>
   /** @deprecated prefer scopeType=SUITE + scopeId */
   suiteId?: string
 }

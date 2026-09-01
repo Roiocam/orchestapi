@@ -44,3 +44,8 @@ server:
     # https://idp.stg.starbucks.net/orchestapi — same reason agent-session nginx
     # uses `return 302 ${FRONTEND_BASE_PATH}/` (relative) instead of an absolute URL.
     use-relative-redirects: true
+
+orchestapi:
+  # Public UI origin used in schedule notify label.runsUrl (no trailing slash).
+  # Example: https://idp.stg.starbucks.net/orchestapi
+  public-base-url: ${PUBLIC_BASE_URL:}

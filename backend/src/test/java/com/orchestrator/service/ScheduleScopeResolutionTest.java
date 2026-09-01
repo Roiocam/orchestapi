@@ -38,6 +38,7 @@ class ScheduleScopeResolutionTest {
     @Mock ExecutionService executionService;
     @Mock TaskScheduler taskScheduler;
     @Mock BatchExecutionService batchExecutionService;
+    @Mock ScheduleNotifyService scheduleNotifyService;
 
     ScheduleService scheduleService;
 
@@ -52,7 +53,8 @@ class ScheduleScopeResolutionTest {
                 runService,
                 executionService,
                 taskScheduler,
-                batchExecutionService);
+                batchExecutionService,
+                scheduleNotifyService);
     }
 
     @Test

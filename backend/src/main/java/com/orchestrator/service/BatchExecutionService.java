@@ -36,6 +36,14 @@ public class BatchExecutionService {
                              UUID environmentId,
                              TriggerType triggerType,
                              UUID scheduleId) {
+        executeBatchAndCollect(batchId, suites, environmentId, triggerType, scheduleId);
+    }
+
+    public List<SuiteBatchRunResult> executeBatchAndCollect(UUID batchId,
+                                                             List<TestSuite> suites,
+                                                             UUID environmentId,
+                                                             TriggerType triggerType,
+                                                             UUID scheduleId) {
         registry.registerBatch(batchId);
         BatchProgressListener listener = registry.createProgressListener(batchId);
 
@@ -58,10 +66,12 @@ public class BatchExecutionService {
 
             batchRunService.finalizeBatch(batchId, status, succeeded, failed);
             listener.onBatchComplete(batchId, status.name(), succeeded, failed, suites.size());
+            return results;
         } catch (Exception e) {
             log.error("Batch {} execution failed unexpectedly: {}", batchId, e.getMessage(), e);
             batchRunService.finalizeBatch(batchId, BatchStatus.FAILURE, 0, suites.size());
             listener.onBatchError(batchId, e.getMessage());
+            return List.of();
         } finally {
             registry.unregisterBatch(batchId);
         }

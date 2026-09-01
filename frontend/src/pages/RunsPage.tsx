@@ -227,6 +227,7 @@ export default function RunsPage() {
   const [scheduleSubmitting, setScheduleSubmitting] = useState(false)
   const watchedScopeType = Form.useWatch('scopeType', scheduleForm) as 'SUITE' | 'COLLECTION' | 'PROJECT' | undefined
   const scheduleScopeType = watchedScopeType ?? 'SUITE'
+  const notifyEnabled = Form.useWatch('notifyEnabled', scheduleForm) as boolean | undefined
 
   // Dropdown options for schedule modal
   const [suiteOptions, setSuiteOptions] = useState<{ value: string; label: string }[]>([])
@@ -573,17 +574,31 @@ export default function RunsPage() {
     setEditingSchedule(schedule ?? null)
     if (schedule) {
       const scopeType = schedule.scopeType ?? 'SUITE'
+      const extra = schedule.notifyExtraLabels ?? {}
       scheduleForm.setFieldsValue({
         scopeType,
         scopeId: schedule.scopeId ?? schedule.suiteId,
         environmentId: schedule.environmentId,
         cronExpression: schedule.cronExpression,
         description: schedule.description ?? '',
+        notifyEnabled: schedule.notifyEnabled ?? false,
+        notifyUrl: schedule.notifyUrl ?? '',
+        notifyOn: schedule.notifyOn ?? 'ON_FAILURE',
+        notifyEventName: schedule.notifyEventName ?? '',
+        notifyBusinessId: schedule.notifyBusinessId ?? '',
+        notifyOperator: schedule.notifyOperator ?? '',
+        notifyExtraLabelsText: Object.keys(extra).length
+          ? JSON.stringify(extra, null, 2)
+          : '',
       })
       setCronValue(schedule.cronExpression)
     } else {
       scheduleForm.resetFields()
-      scheduleForm.setFieldsValue({ scopeType: 'SUITE' })
+      scheduleForm.setFieldsValue({
+        scopeType: 'SUITE',
+        notifyEnabled: false,
+        notifyOn: 'ON_FAILURE',
+      })
       setCronValue('')
     }
     setCronPreview(null)
@@ -595,12 +610,39 @@ export default function RunsPage() {
     try {
       const values = await scheduleForm.validateFields()
       setScheduleSubmitting(true)
+
+      let notifyExtraLabels: Record<string, string> | undefined
+      const rawExtra = (values.notifyExtraLabelsText as string | undefined)?.trim()
+      if (rawExtra) {
+        try {
+          const parsed = JSON.parse(rawExtra) as unknown
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            message.error('Extra labels must be a JSON object of string keys/values')
+            return
+          }
+          notifyExtraLabels = {}
+          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+            notifyExtraLabels[k] = v == null ? '' : String(v)
+          }
+        } catch {
+          message.error('Extra labels must be valid JSON')
+          return
+        }
+      }
+
       const payload: RunScheduleRequest = {
         scopeType: values.scopeType ?? 'SUITE',
         scopeId: values.scopeId,
         environmentId: values.environmentId,
         cronExpression: values.cronExpression,
         description: values.description || undefined,
+        notifyEnabled: Boolean(values.notifyEnabled),
+        notifyUrl: values.notifyUrl || undefined,
+        notifyOn: values.notifyOn ?? 'ON_FAILURE',
+        notifyEventName: values.notifyEventName || undefined,
+        notifyBusinessId: values.notifyBusinessId || undefined,
+        notifyOperator: values.notifyOperator || undefined,
+        notifyExtraLabels,
       }
       if (editingSchedule) {
         await scheduleApi.update(editingSchedule.id, payload)
@@ -875,6 +917,7 @@ export default function RunsPage() {
               {record.suiteCount} suite{record.suiteCount === 1 ? '' : 's'}
             </Text>
           )}
+          {record.notifyEnabled && <Tag color="cyan">Notify</Tag>}
         </Space>
       ),
     },
@@ -1342,14 +1385,14 @@ export default function RunsPage() {
         okText={editingSchedule ? 'Update' : 'Create'}
         confirmLoading={scheduleSubmitting}
         destroyOnClose
-        width={560}
+        width={640}
       >
         <Form
           form={scheduleForm}
           layout="vertical"
           requiredMark="optional"
           style={{ marginTop: 8 }}
-          initialValues={{ scopeType: 'SUITE' }}
+          initialValues={{ scopeType: 'SUITE', notifyEnabled: false, notifyOn: 'ON_FAILURE' }}
         >
           <Form.Item
             name="scopeType"
@@ -1477,6 +1520,73 @@ export default function RunsPage() {
           >
             <Input placeholder="Optional description" />
           </Form.Item>
+
+          <Form.Item
+            name="notifyEnabled"
+            label="Notify external engine"
+            valuePropName="checked"
+            extra="POST a fixed event envelope to your notification rules engine after each scheduled run."
+          >
+            <Switch />
+          </Form.Item>
+
+          {notifyEnabled && (
+            <>
+              <Form.Item
+                name="notifyUrl"
+                label="Notify URL"
+                rules={[{ required: true, message: 'Notify URL is required when enabled' }]}
+              >
+                <Input placeholder="https://notify-engine.example/api/events" />
+              </Form.Item>
+              <Form.Item
+                name="notifyOn"
+                label="Notify when"
+                rules={[{ required: true }]}
+              >
+                <Segmented
+                  options={[
+                    { label: 'On failure', value: 'ON_FAILURE' },
+                    { label: 'Always', value: 'ALWAYS' },
+                  ]}
+                />
+              </Form.Item>
+              <div className="form-grid-2">
+                <Form.Item
+                  name="notifyEventName"
+                  label="Event name"
+                  extra="Default: orchestapi.schedule.run"
+                >
+                  <Input placeholder="orchestapi.schedule.run" />
+                </Form.Item>
+                <Form.Item
+                  name="notifyBusinessId"
+                  label="Business ID"
+                  extra="Default: schedule id"
+                >
+                  <Input placeholder="Optional override" />
+                </Form.Item>
+                <Form.Item
+                  name="notifyOperator"
+                  label="Operator"
+                  extra="Default: orchestapi"
+                >
+                  <Input placeholder="orchestapi" />
+                </Form.Item>
+              </div>
+              <Form.Item
+                name="notifyExtraLabelsText"
+                label="Extra labels (JSON object)"
+                extra='Merged into label without overriding system keys. Example: {"team":"platform","severity":"agent"}'
+              >
+                <Input.TextArea
+                  rows={4}
+                  placeholder='{"team":"platform"}'
+                  style={{ fontFamily: 'var(--font-code)', fontSize: 12 }}
+                />
+              </Form.Item>
+            </>
+          )}
         </Form>
       </Modal>
     </div>

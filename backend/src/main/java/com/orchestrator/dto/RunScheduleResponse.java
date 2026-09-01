@@ -3,6 +3,7 @@ package com.orchestrator.dto;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -24,6 +25,13 @@ public class RunScheduleResponse {
     private String cronExpression;
     private Boolean active;
     private String description;
+    private Boolean notifyEnabled;
+    private String notifyUrl;
+    private String notifyOn;
+    private String notifyEventName;
+    private String notifyBusinessId;
+    private String notifyOperator;
+    private Map<String, String> notifyExtraLabels;
     private LocalDateTime lastRunAt;
     private LocalDateTime nextRunAt;
     private LocalDateTime createdAt;

@@ -121,6 +121,7 @@ class ScheduleBatchRunTest {
     @Mock ExecutionService executionService;
     @Mock TaskScheduler taskScheduler;
     @Mock BatchExecutionService batchExecutionService;
+    @Mock ScheduleNotifyService scheduleNotifyService;
 
     ScheduleService scheduleService;
 
@@ -135,7 +136,8 @@ class ScheduleBatchRunTest {
                 runService,
                 executionService,
                 taskScheduler,
-                batchExecutionService);
+                batchExecutionService,
+                scheduleNotifyService);
     }
 
     @Test

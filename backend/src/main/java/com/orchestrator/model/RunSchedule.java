@@ -1,11 +1,16 @@
 package com.orchestrator.model;
 
+import com.orchestrator.model.enums.ScheduleNotifyOn;
 import com.orchestrator.model.enums.ScheduleScopeType;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -50,6 +55,32 @@ public class RunSchedule {
     @Column(length = 255)
     private String description;
 
+    @Column(name = "notify_enabled", nullable = false)
+    @Builder.Default
+    private Boolean notifyEnabled = false;
+
+    @Column(name = "notify_url", length = 2000)
+    private String notifyUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "notify_on", nullable = false, length = 20)
+    @Builder.Default
+    private ScheduleNotifyOn notifyOn = ScheduleNotifyOn.ON_FAILURE;
+
+    @Column(name = "notify_event_name", length = 200)
+    private String notifyEventName;
+
+    @Column(name = "notify_business_id", length = 200)
+    private String notifyBusinessId;
+
+    @Column(name = "notify_operator", length = 100)
+    private String notifyOperator;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "notify_extra_labels", columnDefinition = "jsonb", nullable = false)
+    @Builder.Default
+    private Map<String, String> notifyExtraLabels = new LinkedHashMap<>();
+
     @Column(name = "last_run_at")
     private LocalDateTime lastRunAt;
 
@@ -69,6 +100,9 @@ public class RunSchedule {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (notifyExtraLabels == null) {
+            notifyExtraLabels = new LinkedHashMap<>();
+        }
     }
 
     @PreUpdate
