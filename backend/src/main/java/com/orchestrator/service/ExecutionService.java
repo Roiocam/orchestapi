@@ -227,6 +227,14 @@ public class ExecutionService {
      * Steps with #{name} (no default) are SKIPPED.
      */
     public SuiteExecutionResult executePreparedNonInteractive(PreparedExecution prepared) {
+        return executePreparedNonInteractive(prepared, null);
+    }
+
+    /**
+     * Non-interactive execution with optional per-step progress callback (for SSE viewers).
+     */
+    public SuiteExecutionResult executePreparedNonInteractive(PreparedExecution prepared,
+                                                              Consumer<StepExecutionResult> onStepComplete) {
         bindPreparedOAuthSnapshot(prepared);
         if (prepared.executionOrder().isEmpty()) {
             return SuiteExecutionResult.builder()
@@ -268,6 +276,7 @@ public class ExecutionService {
                         .extractedVariables(Collections.emptyMap())
                         .build();
                 resultCache.put(stepId, skipResult);
+                if (onStepComplete != null) onStepComplete.accept(skipResult);
                 continue;
             }
 
@@ -323,6 +332,7 @@ public class ExecutionService {
             if (step.isCacheable()) result.setFromCache(true);
             resultCache.put(stepId, result);
             executedAt.put(stepId, System.currentTimeMillis());
+            if (onStepComplete != null) onStepComplete.accept(result);
         }
 
         // Build final results

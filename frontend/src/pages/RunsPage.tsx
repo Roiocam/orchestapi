@@ -210,8 +210,9 @@ export default function RunsPage() {
 
   // View drawer
   const [viewDrawer, setViewDrawer] = useState<string | null>(null)
-  const [viewDetail, setViewDetail] = useState<TestRunResponse | null>(null)
   const [viewLoading, setViewLoading] = useState(false)
+  const [liveResult, setLiveResult] = useState<SuiteExecutionResult | null>(null)
+  const runStreamRef = useRef<(() => void) | null>(null)
 
   // ──── Batches state ────
   const [batchData, setBatchData] = useState<PageResponse<BatchRunResponse>>({
@@ -281,6 +282,13 @@ export default function RunsPage() {
   const [cronPreview, setCronPreview] = useState<CronPreviewResponse | null>(null)
   const [cronPreviewLoading, setCronPreviewLoading] = useState(false)
   const cronDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      runStreamRef.current?.()
+      runStreamRef.current = null
+    }
+  }, [])
 
   // ──── Run History: data fetch ────
   useEffect(() => {
@@ -442,18 +450,51 @@ export default function RunsPage() {
   }
 
   const handleViewRun = async (id: string) => {
+    runStreamRef.current?.()
+    runStreamRef.current = null
     setViewDrawer(id)
     setViewLoading(true)
-    setViewDetail(null)
+    setLiveResult(null)
     try {
       const detail = await runApi.get(id)
-      setViewDetail(detail)
+      if (detail.status === 'RUNNING') {
+        setLiveResult({ status: 'RUNNING', steps: [], totalDurationMs: 0 })
+        let receivedStep = false
+        runStreamRef.current = runApi.stream(id, {
+          onStep: (step) => {
+            receivedStep = true
+            setLiveResult((prev) => {
+              if (!prev) return { status: 'RUNNING', steps: [step], totalDurationMs: 0 }
+              return { ...prev, steps: [...prev.steps, step] }
+            })
+          },
+          onComplete: (result) => {
+            setLiveResult(result)
+            runStreamRef.current = null
+          },
+          onError: (error) => {
+            runStreamRef.current = null
+            if (!receivedStep) {
+              message.error(error || t('pages.runs.failedStreamRun'))
+            }
+          },
+        })
+      } else if (detail.resultData) {
+        setLiveResult(detail.resultData as SuiteExecutionResult)
+      }
     } catch {
       message.error(t('pages.runs.failedLoadRunDetails'))
       setViewDrawer(null)
     } finally {
       setViewLoading(false)
     }
+  }
+
+  const closeRunDrawer = () => {
+    runStreamRef.current?.()
+    runStreamRef.current = null
+    setViewDrawer(null)
+    setLiveResult(null)
   }
 
   const handleExportRun = async (id: string) => {
@@ -1406,7 +1447,7 @@ export default function RunsPage() {
       <Drawer
         title={t('pages.runs.runDetailsTitle')}
         open={!!viewDrawer}
-        onClose={() => { setViewDrawer(null); setViewDetail(null) }}
+        onClose={closeRunDrawer}
         width={800}
         destroyOnClose
       >
@@ -1414,12 +1455,12 @@ export default function RunsPage() {
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
             <Spin />
           </div>
-        ) : viewDetail?.resultData ? (
+        ) : liveResult ? (
           <RunResultsPanel
-            result={viewDetail.resultData as SuiteExecutionResult}
+            result={liveResult}
             allSteps={[]}
             targetStepId={null}
-            onClose={() => { setViewDrawer(null); setViewDetail(null) }}
+            onClose={closeRunDrawer}
           />
         ) : (
           <div style={{ color: '#888', textAlign: 'center', padding: 40 }}>

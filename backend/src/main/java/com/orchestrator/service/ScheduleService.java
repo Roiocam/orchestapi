@@ -58,6 +58,7 @@ public class ScheduleService {
     private final TaskScheduler taskScheduler;
     private final BatchExecutionService batchExecutionService;
     private final ScheduleNotifyService scheduleNotifyService;
+    private final RunProgressRegistry runProgressRegistry;
 
     private final ConcurrentHashMap<UUID, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
 
@@ -70,7 +71,8 @@ public class ScheduleService {
                            @Lazy ExecutionService executionService,
                            TaskScheduler taskScheduler,
                            @Lazy BatchExecutionService batchExecutionService,
-                           ScheduleNotifyService scheduleNotifyService) {
+                           ScheduleNotifyService scheduleNotifyService,
+                           RunProgressRegistry runProgressRegistry) {
         this.repository = repository;
         this.suiteRepository = suiteRepository;
         this.collectionRepository = collectionRepository;
@@ -81,6 +83,7 @@ public class ScheduleService {
         this.taskScheduler = taskScheduler;
         this.batchExecutionService = batchExecutionService;
         this.scheduleNotifyService = scheduleNotifyService;
+        this.runProgressRegistry = runProgressRegistry;
     }
 
     @PostConstruct
@@ -427,8 +430,13 @@ public class ScheduleService {
                     }
                 }
 
-                SuiteExecutionResult executionResult = executionService.executePreparedNonInteractive(prepared);
+                final UUID progressRunId = runId;
+                runProgressRegistry.open(progressRunId);
+                SuiteExecutionResult executionResult = executionService.executePreparedNonInteractive(
+                        prepared,
+                        step -> runProgressRegistry.emitStep(progressRunId, step));
                 runService.completeRun(runId, executionResult);
+                runProgressRegistry.complete(progressRunId, executionResult);
                 SuiteBatchRunResult result = SuiteBatchRunResult.builder()
                         .suiteId(suite.getId())
                         .suiteName(suite.getName())
@@ -442,6 +450,7 @@ public class ScheduleService {
             } catch (Exception e) {
                 if (runId != null) {
                     runService.failRun(runId, e.getMessage());
+                    runProgressRegistry.error(runId, e.getMessage());
                 }
                 SuiteBatchRunResult result = SuiteBatchRunResult.builder()
                         .suiteId(suite.getId())
@@ -455,6 +464,9 @@ public class ScheduleService {
                     progressListener.onSuiteCompleted(batchId, result);
                 }
             } finally {
+                if (runId != null) {
+                    runProgressRegistry.close(runId);
+                }
                 if (registry != null && batchId != null) {
                     registry.setCurrentRunId(batchId, null);
                 }

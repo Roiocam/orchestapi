@@ -16,13 +16,13 @@ export default defineConfig({
         // Disable buffering for SSE streaming endpoints
         configure: (proxy) => {
           proxy.on('proxyReq', (_proxyReq, req) => {
-            if (req.url?.includes('/run/stream') || req.url?.includes('/requests/stream')) {
+            if (req.url?.includes('/stream')) {
               _proxyReq.setHeader('Cache-Control', 'no-cache')
               _proxyReq.setHeader('Connection', 'keep-alive')
             }
           })
           proxy.on('proxyRes', (proxyRes, req) => {
-            if (req.url?.includes('/run/stream') || req.url?.includes('/requests/stream')) {
+            if (req.url?.includes('/stream')) {
               proxyRes.headers['cache-control'] = 'no-cache'
               proxyRes.headers['x-accel-buffering'] = 'no'
             }

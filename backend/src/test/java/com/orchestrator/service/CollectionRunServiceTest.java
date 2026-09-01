@@ -122,6 +122,7 @@ class ScheduleBatchRunTest {
     @Mock TaskScheduler taskScheduler;
     @Mock BatchExecutionService batchExecutionService;
     @Mock ScheduleNotifyService scheduleNotifyService;
+    @Mock RunProgressRegistry runProgressRegistry;
 
     ScheduleService scheduleService;
 
@@ -137,7 +138,8 @@ class ScheduleBatchRunTest {
                 executionService,
                 taskScheduler,
                 batchExecutionService,
-                scheduleNotifyService);
+                scheduleNotifyService,
+                runProgressRegistry);
     }
 
     @Test
@@ -162,7 +164,7 @@ class ScheduleBatchRunTest {
         ExecutionService.PreparedExecution prepared =
                 new ExecutionService.PreparedExecution(List.of(), java.util.Map.of(), env, null);
         when(executionService.prepareSuiteRun(any(), eq(envId))).thenReturn(prepared);
-        when(executionService.executePreparedNonInteractive(prepared))
+        when(executionService.executePreparedNonInteractive(eq(prepared), any()))
                 .thenReturn(SuiteExecutionResult.builder().status("SUCCESS").totalDurationMs(1).build())
                 .thenThrow(new RuntimeException("boom"))
                 .thenReturn(SuiteExecutionResult.builder().status("SUCCESS").totalDurationMs(1).build());
@@ -196,7 +198,7 @@ class ScheduleBatchRunTest {
         ExecutionService.PreparedExecution prepared =
                 new ExecutionService.PreparedExecution(List.of(), java.util.Map.of(), env, null);
         when(executionService.prepareSuiteRun(any(), eq(envId))).thenReturn(prepared);
-        when(executionService.executePreparedNonInteractive(prepared))
+        when(executionService.executePreparedNonInteractive(eq(prepared), any()))
                 .thenReturn(SuiteExecutionResult.builder().status("SUCCESS").totalDurationMs(1).build());
 
         java.util.concurrent.atomic.AtomicInteger checks = new java.util.concurrent.atomic.AtomicInteger(0);
@@ -221,7 +223,7 @@ class ScheduleBatchRunTest {
         when(runService.createRun(suite.getId(), envId, TriggerType.MANUAL, null, null))
                 .thenReturn(TestRun.builder().id(runId).build());
         when(executionService.prepareSuiteRun(suite.getId(), envId)).thenReturn(prepared);
-        when(executionService.executePreparedNonInteractive(prepared))
+        when(executionService.executePreparedNonInteractive(eq(prepared), any()))
                 .thenReturn(SuiteExecutionResult.builder().status("SUCCESS").totalDurationMs(0).build());
 
         scheduleService.executeSuitesSequentially(List.of(suite), envId, TriggerType.MANUAL, null);
@@ -229,7 +231,7 @@ class ScheduleBatchRunTest {
         var order = inOrder(runService, executionService);
         order.verify(runService).createRun(suite.getId(), envId, TriggerType.MANUAL, null, null);
         order.verify(executionService).prepareSuiteRun(suite.getId(), envId);
-        order.verify(executionService).executePreparedNonInteractive(prepared);
+        order.verify(executionService).executePreparedNonInteractive(eq(prepared), any());
         order.verify(runService).completeRun(eq(runId), any());
     }
 
@@ -245,7 +247,7 @@ class ScheduleBatchRunTest {
         when(executionService.prepareSuiteRun(suite.getId(), null)).thenReturn(prepared);
         when(runService.createRun(suite.getId(), defaultEnvId, TriggerType.MANUAL, null, null))
                 .thenReturn(TestRun.builder().id(runId).build());
-        when(executionService.executePreparedNonInteractive(prepared))
+        when(executionService.executePreparedNonInteractive(eq(prepared), any()))
                 .thenReturn(SuiteExecutionResult.builder().status("SUCCESS").totalDurationMs(0).build());
 
         scheduleService.executeSuitesSequentially(List.of(suite), null, TriggerType.MANUAL, null);
@@ -284,7 +286,7 @@ class ScheduleBatchRunTest {
 
         verify(batchExecutionService).createScheduledBatch(
                 BatchScopeType.COLLECTION, collectionId, "MCP", envId, scheduleId, List.of(suite));
-        verify(batchExecutionService).executeBatch(batchId, List.of(suite), envId, TriggerType.SCHEDULED, scheduleId);
+        verify(batchExecutionService).executeBatchAndCollect(batchId, List.of(suite), envId, TriggerType.SCHEDULED, scheduleId);
         verify(batchExecutionService, never()).executeEmptyBatch(any());
     }
 
@@ -314,7 +316,7 @@ class ScheduleBatchRunTest {
         ExecutionService.PreparedExecution prepared =
                 new ExecutionService.PreparedExecution(List.of(), java.util.Map.of(), env, null);
         when(executionService.prepareSuiteRun(suiteId, envId)).thenReturn(prepared);
-        when(executionService.executePreparedNonInteractive(prepared))
+        when(executionService.executePreparedNonInteractive(eq(prepared), any()))
                 .thenReturn(SuiteExecutionResult.builder().status("SUCCESS").totalDurationMs(0).build());
 
         scheduleService.executeScheduledRun(scheduleId);

@@ -21,8 +21,7 @@ import {
 import type { TFunction } from 'i18next'
 import type { BatchRunDetailResponse, BatchRunResponse } from '../types/batch'
 import type { CollectionSuiteRunResult } from '../types/project'
-import type { TestRunResponse } from '../types/run'
-import type { SuiteExecutionResult } from '../services/testSuiteApi'
+import type { SuiteExecutionResult, StepExecutionResult } from '../services/testSuiteApi'
 import { batchApi } from '../services/batchApi'
 import { runApi } from '../services/runApi'
 import RunResultsPanel from '../components/RunResultsPanel'
@@ -66,8 +65,9 @@ export default function BatchDetailPage() {
   const streamRef = useRef<(() => void) | null>(null)
 
   const [viewDrawer, setViewDrawer] = useState<string | null>(null)
-  const [viewDetail, setViewDetail] = useState<TestRunResponse | null>(null)
   const [viewLoading, setViewLoading] = useState(false)
+  const [liveResult, setLiveResult] = useState<SuiteExecutionResult | null>(null)
+  const runStreamRef = useRef<(() => void) | null>(null)
 
   const loadDetail = useCallback(async (batchId: string) => {
     setLoading(true)
@@ -157,6 +157,20 @@ export default function BatchDetailPage() {
     }
   }, [id, detail?.batch.status, loadDetail])
 
+  useEffect(() => {
+    return () => {
+      runStreamRef.current?.()
+      runStreamRef.current = null
+    }
+  }, [])
+
+  const closeRunDrawer = () => {
+    runStreamRef.current?.()
+    runStreamRef.current = null
+    setViewDrawer(null)
+    setLiveResult(null)
+  }
+
   const handleExport = async () => {
     if (!id) return
     try {
@@ -193,12 +207,39 @@ export default function BatchDetailPage() {
   }
 
   const handleViewRun = async (runId: string) => {
+    runStreamRef.current?.()
+    runStreamRef.current = null
     setViewDrawer(runId)
     setViewLoading(true)
-    setViewDetail(null)
+    setLiveResult(null)
     try {
       const run = await runApi.get(runId)
-      setViewDetail(run)
+
+      if (run.status === 'RUNNING') {
+        setLiveResult({ status: 'RUNNING', steps: [], totalDurationMs: 0 })
+        let receivedStep = false
+        runStreamRef.current = runApi.stream(runId, {
+          onStep: (step: StepExecutionResult) => {
+            receivedStep = true
+            setLiveResult((prev) => {
+              if (!prev) return { status: 'RUNNING', steps: [step], totalDurationMs: 0 }
+              return { ...prev, steps: [...prev.steps, step] }
+            })
+          },
+          onComplete: (result) => {
+            setLiveResult(result)
+            runStreamRef.current = null
+          },
+          onError: (error) => {
+            runStreamRef.current = null
+            if (!receivedStep) {
+              message.error(error || t('pages.batchDetail.failedStreamRun'))
+            }
+          },
+        })
+      } else if (run.resultData) {
+        setLiveResult(run.resultData as SuiteExecutionResult)
+      }
     } catch {
       message.error(t('pages.runs.failedLoadRunDetails'))
       setViewDrawer(null)
@@ -368,7 +409,7 @@ export default function BatchDetailPage() {
       <Drawer
         title={t('pages.batchDetail.runDetailsTitle')}
         open={!!viewDrawer}
-        onClose={() => { setViewDrawer(null); setViewDetail(null) }}
+        onClose={closeRunDrawer}
         width={800}
         destroyOnClose
       >
@@ -376,12 +417,12 @@ export default function BatchDetailPage() {
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
             <Spin />
           </div>
-        ) : viewDetail?.resultData ? (
+        ) : liveResult ? (
           <RunResultsPanel
-            result={viewDetail.resultData as SuiteExecutionResult}
+            result={liveResult}
             allSteps={[]}
             targetStepId={null}
-            onClose={() => { setViewDrawer(null); setViewDetail(null) }}
+            onClose={closeRunDrawer}
           />
         ) : (
           <div style={{ color: '#888', textAlign: 'center', padding: 40 }}>
