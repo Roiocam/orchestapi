@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation, Trans } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card,
@@ -77,6 +78,7 @@ function resolveChain(targetId: string, allSteps: TestStep[]): TestStep[] {
 }
 
 export default function TestSuiteDetailPage() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [form] = Form.useForm()
@@ -144,7 +146,7 @@ export default function TestSuiteDetailPage() {
         if (cancelled) return
         setEnvironments(page.content.map((env) => ({ label: env.name, value: env.id })))
       } catch {
-        if (!cancelled) message.error('Failed to load environments')
+        if (!cancelled) message.error(t('pages.testSuiteDetail.failedLoadEnvironments'))
       }
     }
 
@@ -171,7 +173,7 @@ export default function TestSuiteDetailPage() {
         }
       } catch {
         if (cancelled) return
-        message.error('Failed to load test suite')
+        message.error(t('pages.testSuiteDetail.failedLoad'))
         navigate('/test-suites')
       } finally {
         if (!cancelled) setLoading(false)
@@ -212,7 +214,7 @@ export default function TestSuiteDetailPage() {
 
       if (isNew) {
         const created = await testSuiteApi.create(request)
-        message.success('Test suite created')
+        message.success(t('pages.testSuiteDetail.created'))
         bumpSuiteTree()
         await refreshCollections()
         navigate(`/test-suites/${created.id}`, { replace: true })
@@ -220,7 +222,7 @@ export default function TestSuiteDetailPage() {
         await testSuiteApi.update(id!, request)
         setSuiteName(request.name)
         setMetaOpen(false)
-        message.success('Test suite updated')
+        message.success(t('pages.testSuiteDetail.updated'))
         bumpSuiteTree()
       }
     } catch (err: unknown) {
@@ -230,9 +232,9 @@ export default function TestSuiteDetailPage() {
       }
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to save')
+        message.error(axiosErr.response?.data?.error ?? t('common.failedSave'))
       } else {
-        message.error('Failed to save')
+        message.error(t('common.failedSave'))
       }
     } finally {
       setSaving(false)
@@ -242,12 +244,12 @@ export default function TestSuiteDetailPage() {
   const handleDeleteStep = async (stepId: string) => {
     try {
       await testStepApi.delete(id!, stepId)
-      message.success('Step deleted')
+      message.success(t('pages.testSuiteDetail.stepDeleted'))
       const refreshed = await testStepApi.list(id!)
       setSteps(refreshed)
       setExpandedStepIds(prev => { const next = new Set(prev); next.delete(stepId); return next })
     } catch {
-      message.error('Failed to delete step')
+      message.error(t('pages.testSuiteDetail.failedDeleteStep'))
     }
   }
 
@@ -266,7 +268,7 @@ export default function TestSuiteDetailPage() {
       const refreshed = await testStepApi.list(id!)
       setSteps(refreshed)
     } catch {
-      message.error('Failed to refresh steps')
+      message.error(t('pages.testSuiteDetail.failedRefreshSteps'))
     }
     requestAnimationFrame(() => window.scrollTo(0, scrollY))
   }
@@ -278,7 +280,7 @@ export default function TestSuiteDetailPage() {
   const handleDuplicateStep = async (step: TestStep) => {
     try {
       const request: TestStepRequest = {
-        name: `${step.name} (copy)`,
+        name: `${step.name}${t('pages.testSuiteDetail.copySuffix')}`,
         method: step.method,
         url: step.url,
         headers: step.headers ?? [],
@@ -334,15 +336,15 @@ export default function TestSuiteDetailPage() {
         })),
       }
       await testStepApi.create(id!, request)
-      message.success('Step duplicated')
+      message.success(t('pages.testSuiteDetail.stepDuplicated'))
       const refreshed = await testStepApi.list(id!)
       setSteps(refreshed)
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to duplicate step')
+        message.error(axiosErr.response?.data?.error ?? t('pages.testSuiteDetail.failedDuplicateStep'))
       } else {
-        message.error('Failed to duplicate step')
+        message.error(t('pages.testSuiteDetail.failedDuplicateStep'))
       }
     }
   }
@@ -383,7 +385,7 @@ export default function TestSuiteDetailPage() {
     try {
       await testStepApi.reorder(id!, newOrder)
     } catch {
-      message.error('Failed to reorder steps')
+      message.error(t('pages.testSuiteDetail.failedReorder'))
       const refreshed = await testStepApi.list(id!)
       setSteps(refreshed)
     }
@@ -460,11 +462,11 @@ export default function TestSuiteDetailPage() {
       setRunId(null)
       closeStreamRef.current = null
       if (result.status === 'SUCCESS') {
-        message.success('Run completed successfully')
+        message.success(t('pages.testSuiteDetail.runCompletedSuccess'))
       } else if (result.status === 'PARTIAL_FAILURE') {
-        message.warning('Run completed with partial failures')
+        message.warning(t('pages.testSuiteDetail.runCompletedPartial'))
       } else {
-        message.error('Run failed')
+        message.error(t('pages.testSuiteDetail.runFailed'))
       }
     }
 
@@ -472,7 +474,7 @@ export default function TestSuiteDetailPage() {
       setRunning(false)
       setRunId(null)
       closeStreamRef.current = null
-      message.error(error || 'Run failed')
+      message.error(error || t('pages.testSuiteDetail.runFailed'))
     }
 
     const onRunStarted = (data: { runId: string }) => {
@@ -498,7 +500,7 @@ export default function TestSuiteDetailPage() {
       await testSuiteApi.submitManualInput(id!, runId, values)
       setInputModalOpen(false)
     } catch {
-      message.error('Failed to submit input')
+      message.error(t('pages.testSuiteDetail.failedSubmitInput'))
     }
   }
 
@@ -527,9 +529,9 @@ export default function TestSuiteDetailPage() {
         <div className="suite-detail-title-wrap">
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/test-suites')} />
           <div>
-            <div className="page-header-kicker">{isNew ? 'Create suite' : 'Test suite'}</div>
+            <div className="page-header-kicker">{isNew ? t('pages.testSuiteDetail.createKicker') : t('pages.testSuiteDetail.kicker')}</div>
             <Title level={4} className="page-header-title" style={{ fontSize: 18 }}>
-              {isNew ? 'New Test Suite' : suiteName || 'Test Suite'}
+              {isNew ? t('pages.testSuiteDetail.createTitle') : suiteName || t('pages.testSuiteDetail.defaultTitle')}
             </Title>
           </div>
           {!isNew && (
@@ -538,7 +540,7 @@ export default function TestSuiteDetailPage() {
               size="small"
               icon={<SettingOutlined />}
               onClick={() => setMetaOpen((v) => !v)}
-              title="Edit suite settings"
+              title={t('pages.testSuiteDetail.editSettingsTitle')}
             />
           )}
         </div>
@@ -550,7 +552,7 @@ export default function TestSuiteDetailPage() {
               onClick={() => openRunModal(null)}
               loading={running}
             >
-              Run Suite
+              {t('pages.testSuiteDetail.runSuite')}
             </Button>
             {activeScheduleCount > 0 && (
               <Tag
@@ -559,7 +561,7 @@ export default function TestSuiteDetailPage() {
                 style={{ cursor: 'pointer' }}
                 onClick={() => navigate('/runs?tab=schedules')}
               >
-                {activeScheduleCount} schedule{activeScheduleCount > 1 ? 's' : ''}
+                {t('pages.testSuiteDetail.schedule', { count: activeScheduleCount })}
               </Tag>
             )}
           </Space>
@@ -570,9 +572,9 @@ export default function TestSuiteDetailPage() {
         <div className="product-panel" style={{ marginBottom: 14 }}>
           <div className="product-panel-header">
             <div>
-              <div className="product-panel-title">Suite settings</div>
+              <div className="product-panel-title">{t('pages.testSuiteDetail.suiteSettingsTitle')}</div>
               <div className="product-panel-subtitle">
-                Name the scenario and place it in a collection folder.
+                {t('pages.testSuiteDetail.suiteSettingsSubtitle')}
               </div>
             </div>
           </div>
@@ -582,33 +584,33 @@ export default function TestSuiteDetailPage() {
                 <Form.Item
                   className="form-span-2"
                   name="name"
-                  label="Name"
-                  rules={[{ required: true, message: 'Name is required' }]}
-                  extra="Shown in the explorer and run history."
+                  label={t('common.name')}
+                  rules={[{ required: true, message: t('common.nameRequired') }]}
+                  extra={t('pages.testSuiteDetail.nameExtra')}
                 >
-                  <Input placeholder="e.g. Skill Catalog, Skills Install" autoFocus={isNew} />
+                  <Input placeholder={t('pages.testSuiteDetail.namePlaceholder')} autoFocus={isNew} />
                 </Form.Item>
                 <Form.Item
                   className="form-span-2"
                   name="description"
-                  label="Description"
-                  extra="Optional context for teammates."
+                  label={t('common.description')}
+                  extra={t('pages.testSuiteDetail.descriptionExtra')}
                 >
                   <Input.TextArea
                     rows={2}
-                    placeholder="What does this scenario verify?"
+                    placeholder={t('pages.testSuiteDetail.descriptionPlaceholder')}
                     autoSize={{ minRows: 2, maxRows: 4 }}
                   />
                 </Form.Item>
                 <Form.Item
                   name="collectionId"
-                  label="Collection"
-                  rules={[{ required: true, message: 'Collection is required' }]}
+                  label={t('pages.testSuiteDetail.collection')}
+                  rules={[{ required: true, message: t('pages.testSuiteDetail.collectionRequired') }]}
                   initialValue={effectiveCollectionId ?? undefined}
-                  extra="Folders group related scenarios."
+                  extra={t('pages.testSuiteDetail.collectionExtra')}
                 >
                   <Select
-                    placeholder={projectId ? 'Select collection' : 'Select a project first'}
+                    placeholder={projectId ? t('pages.testSuiteDetail.collectionPlaceholder') : t('pages.testSuiteDetail.selectProjectFirst')}
                     options={collections.map((c) => ({ value: c.id, label: c.name }))}
                     disabled={!projectId || collections.length === 0}
                     showSearch
@@ -617,13 +619,13 @@ export default function TestSuiteDetailPage() {
                 </Form.Item>
                 <Form.Item
                   name="defaultEnvironmentId"
-                  label="Default Environment"
-                  extra="Used when running unless you pick another."
+                  label={t('pages.testSuiteDetail.defaultEnvironment')}
+                  extra={t('pages.testSuiteDetail.defaultEnvironmentExtra')}
                 >
                   <Select
                     showSearch
                     allowClear
-                    placeholder="Select an environment"
+                    placeholder={t('pages.testSuiteDetail.selectEnvironment')}
                     options={environments}
                     filterOption={(input, option) =>
                       (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -642,9 +644,9 @@ export default function TestSuiteDetailPage() {
             </Form>
           </div>
           <div className="product-panel-footer">
-            {!isNew && <Button onClick={() => setMetaOpen(false)}>Cancel</Button>}
+            {!isNew && <Button onClick={() => setMetaOpen(false)}>{t('common.cancel')}</Button>}
             <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
-              {isNew ? 'Create suite' : 'Save settings'}
+              {isNew ? t('pages.testSuiteDetail.createSuite') : t('pages.testSuiteDetail.saveSettings')}
             </Button>
           </div>
         </div>
@@ -657,7 +659,7 @@ export default function TestSuiteDetailPage() {
           className="brand-card card-suite"
           title={
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>Steps</span>
+              <span>{t('pages.testSuiteDetail.stepsTitle')}</span>
               <Segmented
                 size="small"
                 value={viewMode}
@@ -670,7 +672,7 @@ export default function TestSuiteDetailPage() {
               />
               {viewMode === 'list' && (
                 <Input
-                  placeholder="Search steps..."
+                  placeholder={t('pages.testSuiteDetail.searchSteps')}
                   size="small"
                   allowClear
                   value={stepSearch}
@@ -686,18 +688,18 @@ export default function TestSuiteDetailPage() {
               {steps.length > 0 && (
                 <>
                   <Button type="text" size="small" onClick={() => setExpandedStepIds(new Set(steps.map(s => s.id)))}>
-                    Expand All
+                    {t('pages.testSuiteDetail.expandAll')}
                   </Button>
                   <Button type="text" size="small" onClick={() => setExpandedStepIds(new Set())}>
-                    Collapse All
+                    {t('pages.testSuiteDetail.collapseAll')}
                   </Button>
                 </>
               )}
               <Button size="small" icon={<ImportOutlined />} onClick={() => setImportModalOpen(true)}>
-                Import cURL
+                {t('pages.testSuiteDetail.importCurl')}
               </Button>
               <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => setExpandedStepIds(prev => new Set(prev).add('_new'))}>
-                Add Step
+                {t('pages.testSuiteDetail.addStep')}
               </Button>
             </Space>
           }
@@ -706,7 +708,7 @@ export default function TestSuiteDetailPage() {
             <DagView steps={steps} runResult={runResult} running={running} onRunStep={(stepId) => openRunModal(stepId)} onEditStep={(stepId) => { setViewMode('list'); setExpandedStepIds(new Set([stepId])); setTimeout(() => document.getElementById(`step-${stepId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50) }} />
           ) : steps.length === 0 && !expandedStepIds.has('_new') ? (
             <div style={{ textAlign: 'center', color: '#999', padding: 24 }}>
-              No steps yet. Click &quot;Add Step&quot; to create one.
+              {t('pages.testSuiteDetail.emptySteps')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -779,13 +781,13 @@ export default function TestSuiteDetailPage() {
 
                           {/* Badges */}
                           {step.dependencies.length > 0 && (
-                            <Tag style={{ margin: 0 }}>{step.dependencies.length} deps</Tag>
+                            <Tag style={{ margin: 0 }}>{t('pages.testSuiteDetail.deps', { count: step.dependencies.length })}</Tag>
                           )}
                           {step.cacheable && (
-                            <Tag color="cyan" style={{ margin: 0 }}>cached</Tag>
+                            <Tag color="cyan" style={{ margin: 0 }}>{t('pages.testSuiteDetail.cached')}</Tag>
                           )}
                           {step.dependencyOnly && (
-                            <Tag color="default" style={{ margin: 0 }}>Dep Only</Tag>
+                            <Tag color="default" style={{ margin: 0 }}>{t('pages.testSuiteDetail.depOnly')}</Tag>
                           )}
                           {step.groupName && (
                             <Tag color="geekblue" style={{ margin: 0 }}>{step.groupName}</Tag>
@@ -806,7 +808,7 @@ export default function TestSuiteDetailPage() {
                               icon={<CaretRightOutlined />}
                               onClick={() => openRunModal(step.id)}
                               disabled={running}
-                              title="Run this step"
+                              title={t('pages.testSuiteDetail.runThisStep')}
                             />
                             <Button
                               type="text"
@@ -817,21 +819,21 @@ export default function TestSuiteDetailPage() {
                                   const defaultEnvId = form.getFieldValue('defaultEnvironmentId') as string | undefined
                                   const curl = await testStepApi.generateCurl(id!, step.id, defaultEnvId)
                                   navigator.clipboard.writeText(curl)
-                                  message.success('cURL copied to clipboard')
+                                  message.success(t('pages.testSuiteDetail.curlCopied'))
                                 } catch {
-                                  message.error('Failed to generate cURL')
+                                  message.error(t('pages.testSuiteDetail.failedGenerateCurl'))
                                 }
                               }}
-                              title="Copy as cURL"
+                              title={t('pages.testSuiteDetail.copyCurl')}
                             />
                             <Button
                               type="text"
                               size="small"
                               onClick={() => handleDuplicateStep(step)}
-                              title="Duplicate step"
+                              title={t('pages.testSuiteDetail.duplicateStep')}
                               style={{ fontSize: 12, padding: '0 4px' }}
                             >
-                              Clone
+                              {t('pages.testSuiteDetail.clone')}
                             </Button>
                             <Button
                               type="text"
@@ -840,7 +842,7 @@ export default function TestSuiteDetailPage() {
                               onClick={() => toggleExpand(step.id)}
                             />
                             <Popconfirm
-                              title="Delete this step?"
+                              title={t('pages.testSuiteDetail.deleteStepConfirm')}
                               onConfirm={() => handleDeleteStep(step.id)}
                               okType="danger"
                             >
@@ -916,12 +918,12 @@ export default function TestSuiteDetailPage() {
           suiteId={id}
           onSuccess={async () => {
             setImportModalOpen(false)
-            message.success('Step imported successfully')
+            message.success(t('pages.testSuiteDetail.stepImported'))
             try {
               const refreshed = await testStepApi.list(id)
               setSteps(refreshed)
             } catch {
-              message.error('Failed to refresh steps')
+              message.error(t('pages.testSuiteDetail.failedRefreshSteps'))
             }
           }}
           onCancel={() => setImportModalOpen(false)}
@@ -930,17 +932,21 @@ export default function TestSuiteDetailPage() {
 
       {/* Run confirmation modal */}
       <Modal
-        title={runTarget === null ? 'Run Suite' : 'Run Step'}
+        title={runTarget === null ? t('pages.testSuiteDetail.runSuiteModal') : t('pages.testSuiteDetail.runStepModal')}
         open={runModalOpen}
         onOk={handleRunConfirm}
         onCancel={() => setRunModalOpen(false)}
-        okText="Run"
+        okText={t('common.run')}
         okButtonProps={{ icon: <PlayCircleOutlined /> }}
       >
         {/* Execution chain preview */}
         {runTarget === null ? (
           <div className="form-hint" style={{ marginTop: 0 }}>
-            Run all <strong>{steps.length}</strong> steps in this suite.
+            <Trans
+              i18nKey="pages.testSuiteDetail.runAllSteps"
+              values={{ count: steps.length }}
+              components={{ strong: <strong /> }}
+            />
           </div>
         ) : (() => {
           const chain = resolveChain(runTarget, steps)
@@ -948,8 +954,18 @@ export default function TestSuiteDetailPage() {
           return (
             <div style={{ marginBottom: 14 }}>
               <div className="form-hint" style={{ marginTop: 0, marginBottom: 8 }}>
-                Running <strong>{targetStep?.name}</strong>
-                {chain.length > 1 && <> and <strong>{chain.length - 1}</strong> {chain.length - 1 === 1 ? 'dependency' : 'dependencies'}</>}:
+                <Trans
+                  i18nKey="pages.testSuiteDetail.runStepPrefix"
+                  values={{ name: targetStep?.name }}
+                  components={{ strong: <strong /> }}
+                />
+                {chain.length > 1 && (
+                  <Trans
+                    i18nKey={chain.length - 1 === 1 ? 'pages.testSuiteDetail.runStepWithDeps_one' : 'pages.testSuiteDetail.runStepWithDeps_other'}
+                    values={{ count: chain.length - 1 }}
+                    components={{ strong: <strong /> }}
+                  />
+                )}
               </div>
               <div style={{
                 display: 'flex',
@@ -986,14 +1002,14 @@ export default function TestSuiteDetailPage() {
 
         <Form layout="vertical" requiredMark="optional">
           <Form.Item
-            label="Environment"
-            extra="Leave empty to use the suite default when set."
+            label={t('components.runCollection.environment')}
+            extra={t('components.runCollection.environmentExtra')}
             style={{ marginBottom: 8 }}
           >
             <Select
               showSearch
               allowClear
-              placeholder="Select an environment (optional)"
+              placeholder={t('components.runCollection.environmentPlaceholder')}
               value={selectedEnvId}
               onChange={(val) => setSelectedEnvId(val)}
               options={environments}

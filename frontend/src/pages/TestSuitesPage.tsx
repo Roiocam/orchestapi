@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Table,
@@ -30,9 +31,11 @@ import type { PageResponse } from '../types/environment'
 import { testSuiteApi, exportSuite } from '../services/testSuiteApi'
 import { useProjectContext } from '../context/ProjectContext'
 import { useRunCollection } from '../components/RunCollectionModal'
+import { formatDateTime } from '../utils/datetime'
 
-const COLUMN_LABELS: Record<string, string> = {
-  name: 'Name',
+function testSuiteColumnLabel(dataIndex: string, t: (key: string) => string): string {
+  if (dataIndex === 'name') return t('pages.testSuites.columnName')
+  return dataIndex
 }
 
 function ColumnSearch({
@@ -48,6 +51,7 @@ function ColumnSearch({
   onApply: (dataIndex: string, value: string) => void
   onReset: (dataIndex: string) => void
 }) {
+  const { t } = useTranslation()
   const [localValue, setLocalValue] = useState(appliedValue)
   const inputRef = useRef<InputRef>(null)
   const { close } = filterDropdownProps
@@ -59,11 +63,13 @@ function ColumnSearch({
     }
   }, [filterDropdownProps.visible, appliedValue])
 
+  const columnLabel = testSuiteColumnLabel(dataIndex, t)
+
   return (
     <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
       <Input
         ref={inputRef}
-        placeholder={`Search ${COLUMN_LABELS[dataIndex] ?? dataIndex}`}
+        placeholder={t('common.searchColumn', { column: columnLabel })}
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         onPressEnter={() => {
@@ -83,7 +89,7 @@ function ColumnSearch({
             close()
           }}
         >
-          Search
+          {t('common.search')}
         </Button>
         <Button
           size="small"
@@ -93,10 +99,10 @@ function ColumnSearch({
             close()
           }}
         >
-          Reset
+          {t('common.reset')}
         </Button>
         <Button type="link" size="small" onClick={() => close()}>
-          Close
+          {t('common.close')}
         </Button>
       </Space>
     </div>
@@ -104,6 +110,7 @@ function ColumnSearch({
 }
 
 export default function TestSuitesPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -174,7 +181,7 @@ export default function TestSuitesPage() {
         const result = await testSuiteApi.list(params)
         if (!cancelled) setData(result)
       } catch {
-        if (!cancelled) message.error('Failed to load test suites')
+        if (!cancelled) message.error(t('pages.testSuites.failedLoad'))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -192,12 +199,12 @@ export default function TestSuitesPage() {
   const handleDelete = async (id: string) => {
     try {
       await testSuiteApi.delete(id)
-      message.success('Test suite deleted')
+      message.success(t('pages.testSuites.deleted'))
       setRefreshKey((k) => k + 1)
       bumpSuiteTree()
       await refreshCollections()
     } catch {
-      message.error('Failed to delete test suite')
+      message.error(t('pages.testSuites.failedDelete'))
     }
   }
 
@@ -227,7 +234,7 @@ export default function TestSuitesPage() {
         collectionId: effectiveCollectionId ?? undefined,
       }
       await testSuiteApi.importSuite(payload)
-      message.success(`Test suite "${importData.name}" imported`)
+      message.success(t('pages.testSuites.imported', { name: importData.name }))
       setPendingImport(null)
       setRefreshKey((k) => k + 1)
       bumpSuiteTree()
@@ -241,10 +248,10 @@ export default function TestSuitesPage() {
           setRenameValue(importData.name as string)
           setRenameModalOpen(true)
         } else {
-          message.error(errorMsg || 'Import failed')
+          message.error(errorMsg || t('common.importFailed'))
         }
       } else {
-        message.error('Import failed')
+        message.error(t('common.importFailed'))
       }
     }
   }
@@ -253,20 +260,20 @@ export default function TestSuitesPage() {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onerror = () => message.error('Failed to read file')
+    reader.onerror = () => message.error(t('common.failedReadFile'))
     reader.onload = async (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string)
         if (!parsed.name) {
-          message.error('Invalid file: missing suite name')
+          message.error(t('pages.testSuites.invalidFile'))
           return
         }
         await doImport(parsed)
       } catch (err) {
         if (err instanceof SyntaxError) {
-          message.error('Invalid JSON file')
+          message.error(t('common.invalidJson'))
         } else {
-          message.error('Import failed')
+          message.error(t('common.importFailed'))
         }
       }
     }
@@ -284,9 +291,9 @@ export default function TestSuitesPage() {
   const handleExport = async (id: string) => {
     try {
       await exportSuite(id)
-      message.success('Suite exported')
+      message.success(t('pages.testSuites.exported'))
     } catch {
-      message.error('Failed to export suite')
+      message.error(t('pages.testSuites.failedExport'))
     }
   }
 
@@ -310,7 +317,7 @@ export default function TestSuitesPage() {
 
   const columns = [
     {
-      title: 'S.No',
+      title: t('common.sno'),
       key: 'sno',
       width: 64,
       render: (_: unknown, __: TestSuite, index: number) => (
@@ -318,7 +325,7 @@ export default function TestSuitesPage() {
       ),
     },
     {
-      title: 'Name',
+      title: t('pages.testSuites.columnName'),
       dataIndex: 'name',
       key: 'name',
       sorter: true,
@@ -327,37 +334,37 @@ export default function TestSuitesPage() {
       render: (name: string) => <strong>{name}</strong>,
     },
     {
-      title: 'Steps',
+      title: t('pages.testSuites.steps'),
       dataIndex: 'stepCount',
       key: 'stepCount',
       width: 80,
       render: (stepCount: number) => <Tag>{stepCount}</Tag>,
     },
     {
-      title: 'Updated',
+      title: t('pages.testSuites.updated'),
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 160,
       sorter: true,
       sortOrder:
         sortBy === 'updatedAt' ? (sortDir === 'asc' ? ('ascend' as const) : ('descend' as const)) : null,
-      render: (date: string) => new Date(date).toLocaleString(),
+      render: (date: string) => formatDateTime(date),
     },
     {
-      title: 'Actions',
+      title: t('common.actions'),
       key: 'actions',
       width: 140,
       render: (_: unknown, record: TestSuite) => (
         <div onClick={(e) => e.stopPropagation()}>
           <Space>
-            <Tooltip title="Edit">
+            <Tooltip title={t('common.edit')}>
               <Button
                 type="text"
                 icon={<EditOutlined />}
                 onClick={() => navigate(`/test-suites/${record.id}`)}
               />
             </Tooltip>
-            <Tooltip title="Export">
+            <Tooltip title={t('common.export')}>
               <Button
                 type="text"
                 icon={<ExportOutlined />}
@@ -365,9 +372,9 @@ export default function TestSuitesPage() {
               />
             </Tooltip>
             <Popconfirm
-              title="Delete this test suite?"
+              title={t('pages.testSuites.deleteConfirm')}
               onConfirm={() => handleDelete(record.id)}
-              okText="Delete"
+              okText={t('common.delete')}
               okType="danger"
             >
               <Button type="text" danger icon={<DeleteOutlined />} />
@@ -389,14 +396,14 @@ export default function TestSuitesPage() {
             </>
           ) : (
             <>
-              <span>All collections</span>
+              <span>{t('pages.testSuites.allCollections')}</span>
               <Tag>{data.totalElements}</Tag>
             </>
           )}
         </div>
         <Space>
           <Button icon={<ImportOutlined />} onClick={() => fileInputRef.current?.click()}>
-            Import
+            {t('common.import')}
           </Button>
           {selectedCollection && (
             <Button
@@ -410,7 +417,7 @@ export default function TestSuitesPage() {
                 })
               }
             >
-              Run Collection
+              {t('pages.testSuites.runCollection')}
             </Button>
           )}
           <Button
@@ -419,7 +426,7 @@ export default function TestSuitesPage() {
             onClick={() => navigate('/test-suites/new')}
             disabled={!effectiveCollectionId}
           >
-            New Suite
+            {t('pages.testSuites.newSuite')}
           </Button>
         </Space>
       </div>
@@ -430,14 +437,14 @@ export default function TestSuitesPage() {
         accept=".json"
         style={{ display: 'none' }}
         onChange={handleImport}
-        aria-label="Import test suite JSON file"
+        aria-label={t('pages.testSuites.importFileLabel')}
       />
 
       <Modal
         title={
           <Space>
             <WarningOutlined style={{ color: '#faad14' }} />
-            Name already exists
+            {t('common.renameTitle')}
           </Space>
         }
         open={renameModalOpen}
@@ -446,16 +453,15 @@ export default function TestSuitesPage() {
           setRenameModalOpen(false)
           setPendingImport(null)
         }}
-        okText="Import"
+        okText={t('common.import')}
       >
         <p>
-          A test suite named <strong>{pendingImport?.name as string}</strong> already exists.
-          Please enter a new name:
+          {t('pages.testSuites.renameBody', { name: pendingImport?.name as string })}
         </p>
         <Input
           value={renameValue}
           onChange={(e) => setRenameValue(e.target.value)}
-          placeholder="New suite name"
+          placeholder={t('pages.testSuites.renamePlaceholder')}
           onPressEnter={handleRenameImport}
           autoFocus
         />
@@ -463,10 +469,10 @@ export default function TestSuitesPage() {
 
       {activeFilterEntries.length > 0 && (
         <div className="suites-filter-bar">
-          <span style={{ color: '#888', fontSize: 13 }}>Filters:</span>
+          <span style={{ color: '#888', fontSize: 13 }}>{t('common.filters')}</span>
           {activeFilterEntries.map(([key, value]) => (
             <Tag key={key} closable onClose={() => handleResetFilter(key)} color="blue">
-              {COLUMN_LABELS[key] ?? key}: {value}
+              {testSuiteColumnLabel(key, t)}: {value}
             </Tag>
           ))}
           {activeFilterEntries.length > 1 && (
@@ -477,7 +483,7 @@ export default function TestSuitesPage() {
               onClick={handleClearAllFilters}
               style={{ fontSize: 12, padding: 0 }}
             >
-              Clear all
+              {t('common.clearAll')}
             </Button>
           )}
         </div>
@@ -495,8 +501,8 @@ export default function TestSuitesPage() {
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description={
                 selectedCollection
-                  ? 'No suites in this collection'
-                  : 'Select a collection in the explorer, or create a suite'
+                  ? t('pages.testSuites.emptyCollection')
+                  : t('pages.testSuites.emptyDefault')
               }
             />
           ),
@@ -511,7 +517,7 @@ export default function TestSuitesPage() {
           total: data.totalElements,
           showSizeChanger: true,
           pageSizeOptions: ['10', '20', '50'],
-          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
+          showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
         }}
         onChange={(pagination, _filters, sorter) => {
           setCurrentPage(pagination.current ?? 1)

@@ -15,6 +15,7 @@ import {
 import dagre from 'dagre'
 import '@xyflow/react/dist/style.css'
 import { Select, Tag, Button } from 'antd'
+import { useTranslation } from 'react-i18next'
 import {
   SearchOutlined,
   AimOutlined,
@@ -33,6 +34,12 @@ const STEP_WIDTH = 200
 const STEP_HEIGHT = 70
 const GROUP_WIDTH = 240
 const GROUP_HEIGHT = 100
+
+const UNGROUPED_KEY = 'Ungrouped'
+
+function displayGroupName(groupName: string, t: (key: string) => string): string {
+  return groupName === UNGROUPED_KEY ? t('components.dagView.ungrouped') : groupName
+}
 
 const nodeTypes: NodeTypes = { step: StepNode as any, group: GroupNode as any }
 
@@ -131,7 +138,7 @@ function getGroupStatus(
 function buildGroupMap(steps: TestStep[]): Map<string, TestStep[]> {
   const map = new Map<string, TestStep[]>()
   for (const step of steps) {
-    const gn = step.groupName?.trim() || 'Ungrouped'
+    const gn = step.groupName?.trim() || UNGROUPED_KEY
     const list = map.get(gn) || []
     list.push(step)
     map.set(gn, list)
@@ -185,6 +192,7 @@ interface Props {
 }
 
 function DagViewInner({ steps, runResult, running, onEditStep, onRunStep }: Props) {
+  const { t } = useTranslation()
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
   const [dagMode, setDagMode] = useState<DagMode>('expanded')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -226,9 +234,9 @@ function DagViewInner({ steps, runResult, running, onEditStep, onRunStep }: Prop
     // Cross-group edge counts (deduplicated by source→target group)
     const crossEdges = new Map<string, number>()
     for (const step of steps) {
-      const tg = stepGroupLookup.get(step.id) || 'Ungrouped'
+      const tg = stepGroupLookup.get(step.id) || UNGROUPED_KEY
       for (const dep of step.dependencies) {
-        const sg = stepGroupLookup.get(dep.dependsOnStepId) || 'Ungrouped'
+        const sg = stepGroupLookup.get(dep.dependsOnStepId) || UNGROUPED_KEY
         if (sg !== tg) {
           const key = `${sg}->${tg}`
           crossEdges.set(key, (crossEdges.get(key) || 0) + 1)
@@ -302,11 +310,11 @@ function DagViewInner({ steps, runResult, running, onEditStep, onRunStep }: Prop
     const edgeDedup = new Set<string>()
     for (const step of steps) {
       const isVisible = visibleStepIds.has(step.id)
-      const targetNode = isVisible ? step.id : `group:${stepGroupLookup.get(step.id) || 'Ungrouped'}`
+      const targetNode = isVisible ? step.id : `group:${stepGroupLookup.get(step.id) || UNGROUPED_KEY}`
 
       for (const dep of step.dependencies) {
         const srcVisible = visibleStepIds.has(dep.dependsOnStepId)
-        const sourceNode = srcVisible ? dep.dependsOnStepId : `group:${stepGroupLookup.get(dep.dependsOnStepId) || 'Ungrouped'}`
+        const sourceNode = srcVisible ? dep.dependsOnStepId : `group:${stepGroupLookup.get(dep.dependsOnStepId) || UNGROUPED_KEY}`
 
         if (sourceNode === targetNode) continue
         const ek = `${sourceNode}->${targetNode}`
@@ -524,7 +532,7 @@ function DagViewInner({ steps, runResult, running, onEditStep, onRunStep }: Prop
   if (steps.length === 0) {
     return (
       <div style={{ textAlign: 'center', color: '#999', padding: 48 }}>
-        Add steps to see the dependency graph.
+        {t('components.dagView.emptyHint')}
       </div>
     )
   }
@@ -538,7 +546,7 @@ function DagViewInner({ steps, runResult, running, onEditStep, onRunStep }: Prop
         <SearchOutlined style={{ color: '#bbb', fontSize: 13 }} />
         <Select
           showSearch
-          placeholder="Search steps..."
+          placeholder={t('components.dagView.searchPlaceholder')}
           size="small"
           style={{ flex: 1, maxWidth: 300 }}
           value={dagMode === 'chain' ? chainFocusStepId || undefined : undefined}
@@ -550,37 +558,37 @@ function DagViewInner({ steps, runResult, running, onEditStep, onRunStep }: Prop
 
         {/* Mode indicator */}
         {dagMode === 'groups' && (
-          <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>Groups View</Tag>
+          <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>{t('components.dagView.groupsView')}</Tag>
         )}
         {dagMode === 'expanded' && (
-          <Tag color="green" style={{ margin: 0, fontSize: 11 }}>{expandedGroups.size} expanded</Tag>
+          <Tag color="green" style={{ margin: 0, fontSize: 11 }}>{t('components.dagView.expandedCount', { count: expandedGroups.size })}</Tag>
         )}
         {dagMode === 'chain' && chainIds && (
           <>
             <Tag color="purple" style={{ margin: 0, fontSize: 11 }}>
               <AimOutlined style={{ marginRight: 3 }} />
-              Chain: {chainIds.size} node{chainIds.size > 1 ? 's' : ''}
+              {t('components.dagView.chainNodes', { count: chainIds.size })}
             </Tag>
             <Button size="small" type="text" icon={<ArrowLeftOutlined />} onClick={exitChainMode} style={{ fontSize: 11, height: 22, padding: '0 6px' }}>
-              Back
+              {t('common.back')}
             </Button>
           </>
         )}
 
         {/* Expanded group tags */}
         {dagMode === 'expanded' && Array.from(expandedGroups).map(gn => (
-          <Tag key={gn} closable onClose={() => collapseGroup(gn)} style={{ margin: 0, fontSize: 11 }}>{gn}</Tag>
+          <Tag key={gn} closable onClose={() => collapseGroup(gn)} style={{ margin: 0, fontSize: 11 }}>{displayGroupName(gn, t)}</Tag>
         ))}
 
         {/* Action buttons */}
         {dagMode === 'expanded' && expandedGroups.size > 0 && (
           <Button size="small" type="text" icon={<CompressOutlined />} onClick={collapseAll} style={{ fontSize: 11, height: 22, padding: '0 6px' }}>
-            Collapse All
+            {t('components.dagView.collapseAll')}
           </Button>
         )}
         {dagMode === 'groups' && groupMap.size > 1 && (
           <Button size="small" type="text" icon={<ExpandOutlined />} onClick={showAll} style={{ fontSize: 11, height: 22, padding: '0 6px' }}>
-            Show All
+            {t('components.dagView.showAll')}
           </Button>
         )}
       </div>

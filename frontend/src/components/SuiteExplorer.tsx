@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode, type Key } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Button,
@@ -42,6 +43,7 @@ function parseKey(key: TreeKey): { type: 'collection' | 'suite'; id: string } | 
 }
 
 export default function SuiteExplorer() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const {
@@ -89,11 +91,11 @@ export default function SuiteExplorer() {
       })
       setSuites(page.content)
     } catch {
-      message.error('Failed to load suites for explorer')
+      message.error(t('components.suiteExplorer.failedLoadSuites'))
     } finally {
       setLoadingSuites(false)
     }
-  }, [projectId])
+  }, [projectId, t])
 
   useEffect(() => {
     loadSuites()
@@ -187,7 +189,7 @@ export default function SuiteExplorer() {
         name: values.name,
         description: values.description ?? '',
       })
-      message.success('Collection created')
+      message.success(t('components.suiteExplorer.collectionCreated'))
       setCollectionModalOpen(false)
       collectionForm.resetFields()
       await refreshCollections()
@@ -198,9 +200,9 @@ export default function SuiteExplorer() {
       if (err && typeof err === 'object' && 'errorFields' in err) return
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to create collection')
+        message.error(axiosErr.response?.data?.error ?? t('components.suiteExplorer.failedCreateCollection'))
       } else {
-        message.error('Failed to create collection')
+        message.error(t('components.suiteExplorer.failedCreateCollection'))
       }
     } finally {
       setSavingCollection(false)
@@ -232,12 +234,12 @@ export default function SuiteExplorer() {
     items: [
       {
         key: 'new-suite',
-        label: 'New Suite',
+        label: t('components.suiteExplorer.newSuite'),
         onClick: () => newSuiteInCollection(cid),
       },
       {
         key: 'run-collection',
-        label: 'Run Collection',
+        label: t('components.suiteExplorer.runCollection'),
         disabled: runningCollection,
         onClick: () => runCollection(cid),
       },
@@ -248,7 +250,7 @@ export default function SuiteExplorer() {
     items: [
       {
         key: 'new-collection',
-        label: 'New Collection',
+        label: t('components.suiteExplorer.newCollection'),
         disabled: !projectId,
         onClick: () => {
           collectionForm.resetFields()
@@ -257,13 +259,13 @@ export default function SuiteExplorer() {
       },
       {
         key: 'new-suite',
-        label: 'New Suite',
+        label: t('components.suiteExplorer.newSuite'),
         disabled: !effectiveCollectionId,
         onClick: () => navigate('/test-suites/new'),
       },
       {
         key: 'import',
-        label: 'Import Suite',
+        label: t('components.suiteExplorer.importSuite'),
         onClick: () => navigate('/test-suites?import=1'),
       },
     ],
@@ -282,7 +284,7 @@ export default function SuiteExplorer() {
               className="explorer-node-action"
               icon={<MoreOutlined />}
               onClick={(e) => e.stopPropagation()}
-              aria-label="Collection actions"
+              aria-label={t('components.suiteExplorer.collectionActions')}
             />
           </Dropdown>
         </span>
@@ -299,13 +301,13 @@ export default function SuiteExplorer() {
           className="suite-explorer-project"
           loading={projectLoading}
           value={projectId ?? undefined}
-          placeholder="Project"
+          placeholder={t('components.suiteExplorer.project')}
           options={projects.map((p) => ({ value: p.id, label: p.name }))}
           onChange={(value) => setProjectId(value)}
-          aria-label="Current project"
+          aria-label={t('components.suiteExplorer.currentProject')}
         />
         <Dropdown menu={toolbarMenu} trigger={['click']}>
-          <Button size="small" type="text" icon={<PlusOutlined />} aria-label="Create" />
+          <Button size="small" type="text" icon={<PlusOutlined />} aria-label={t('components.suiteExplorer.create')} />
         </Dropdown>
       </div>
 
@@ -314,7 +316,7 @@ export default function SuiteExplorer() {
           size="small"
           allowClear
           prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
-          placeholder="Search collections & suites"
+          placeholder={t('components.suiteExplorer.searchPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -329,7 +331,7 @@ export default function SuiteExplorer() {
           <div className="suite-explorer-empty">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={query ? 'No matches' : 'No collections yet'}
+              description={query ? t('components.suiteExplorer.noMatches') : t('components.suiteExplorer.noCollectionsYet')}
             >
               {!query && (
                 <Button
@@ -338,7 +340,7 @@ export default function SuiteExplorer() {
                   disabled={!projectId}
                   onClick={() => setCollectionModalOpen(true)}
                 >
-                  New Collection
+                  {t('components.suiteExplorer.newCollection')}
                 </Button>
               )}
             </Empty>
@@ -359,25 +361,25 @@ export default function SuiteExplorer() {
       </div>
 
       <Modal
-        title="New Collection"
+        title={t('components.suiteExplorer.newCollection')}
         open={collectionModalOpen}
         onOk={handleCreateCollection}
         onCancel={() => setCollectionModalOpen(false)}
         confirmLoading={savingCollection}
-        okText="Create"
+        okText={t('common.create')}
         destroyOnClose
       >
         <Form form={collectionForm} layout="vertical" requiredMark="optional">
           <Form.Item
             name="name"
-            label="Name"
-            rules={[{ required: true, message: 'Name is required' }]}
-            extra="A group for related suites, e.g. Skills or MCP."
+            label={t('common.name')}
+            rules={[{ required: true, message: t('components.suiteExplorer.nameRequired') }]}
+            extra={t('components.suiteExplorer.nameExtra')}
           >
-            <Input maxLength={200} placeholder="e.g. Skills" autoFocus />
+            <Input maxLength={200} placeholder={t('components.suiteExplorer.namePlaceholder')} autoFocus />
           </Form.Item>
-          <Form.Item name="description" label="Description" extra="Optional context for teammates.">
-            <Input.TextArea rows={2} maxLength={2000} placeholder="Optional" autoSize={{ minRows: 2, maxRows: 4 }} />
+          <Form.Item name="description" label={t('common.description')} extra={t('components.suiteExplorer.descriptionExtra')}>
+            <Input.TextArea rows={2} maxLength={2000} placeholder={t('components.suiteExplorer.descriptionPlaceholder')} autoSize={{ minRows: 2, maxRows: 4 }} />
           </Form.Item>
         </Form>
       </Modal>

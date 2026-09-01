@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { useTranslation } from 'react-i18next'
 
 const METHOD_COLORS: Record<string, string> = {
   GET: '#52c41a',
@@ -30,6 +31,7 @@ export interface GroupNodeData {
 }
 
 function GroupNode({ data }: NodeProps & { data: GroupNodeData }) {
+  const { t } = useTranslation()
   const { groupName, stepCount, methods, aggregateStatus, selected, dimmed } = data
   const style = STATUS_STYLES[aggregateStatus] || STATUS_STYLES.default
 
@@ -62,14 +64,14 @@ function GroupNode({ data }: NodeProps & { data: GroupNodeData }) {
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#262626', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-            {groupName}
+            {groupName === 'Ungrouped' ? t('components.dagView.ungrouped') : groupName}
           </span>
           <span style={{ fontSize: 14, color: '#bfbfbf', marginLeft: 6, flexShrink: 0 }}>&#x276F;</span>
         </div>
 
         {/* Step count */}
         <div style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500 }}>
-          {stepCount} step{stepCount !== 1 ? 's' : ''}
+          {t('components.dagNode.steps', { count: stepCount })}
         </div>
 
         {/* Method dots */}
@@ -77,7 +79,7 @@ function GroupNode({ data }: NodeProps & { data: GroupNodeData }) {
           {dots.map((m, i) => (
             <span
               key={i}
-              title={`${m.method} (${m.count})`}
+              title={t('components.dagNode.methodCount', { method: m.method, count: m.count })}
               style={{
                 width: 8,
                 height: 8,

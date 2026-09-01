@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Form, Modal, Select, message, Progress, List, Tag, Button, Space } from 'antd'
 import { PlayCircleOutlined, StopOutlined, LoadingOutlined } from '@ant-design/icons'
@@ -33,23 +34,8 @@ const SUITE_STATUS_COLOR: Record<string, string> = {
   ERROR: 'red',
 }
 
-function formatRunMessage(succeeded: number, failed: number): void {
-  if (failed === 0) {
-    message.success(
-      `Collection run completed: ${succeeded} suite${succeeded === 1 ? '' : 's'} succeeded`,
-    )
-    return
-  }
-  if (succeeded === 0) {
-    message.error(`Collection run failed: ${failed} suite${failed === 1 ? '' : 's'} failed`)
-    return
-  }
-  message.warning(
-    `Collection run completed: ${succeeded} succeeded, ${failed} failed`,
-  )
-}
-
 export function useRunCollection() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [running, setRunning] = useState(false)
@@ -62,6 +48,18 @@ export function useRunCollection() {
   const [cancelling, setCancelling] = useState(false)
   const closeStreamRef = useRef<(() => void) | null>(null)
 
+  const formatRunMessage = useCallback((succeeded: number, failed: number) => {
+    if (failed === 0) {
+      message.success(t('components.runCollection.completedSuccess', { count: succeeded }))
+      return
+    }
+    if (succeeded === 0) {
+      message.error(t('components.runCollection.completedFailed', { count: failed }))
+      return
+    }
+    message.warning(t('components.runCollection.completedPartial', { succeeded, failed }))
+  }, [t])
+
   const resetProgress = useCallback(() => {
     closeStreamRef.current?.()
     closeStreamRef.current = null
@@ -73,14 +71,14 @@ export function useRunCollection() {
 
   const openRunCollection = useCallback((next: RunCollectionTarget) => {
     if (next.suiteCount === 0) {
-      message.warning('This collection has no suites to run')
+      message.warning(t('components.runCollection.noSuitesToRun'))
       return
     }
     resetProgress()
     setTarget(next)
     setSelectedEnvId(undefined)
     setOpen(true)
-  }, [resetProgress])
+  }, [resetProgress, t])
 
   useEffect(() => {
     if (!open) return
@@ -93,12 +91,12 @@ export function useRunCollection() {
         }
       })
       .catch(() => {
-        if (!cancelled) message.error('Failed to load environments')
+        if (!cancelled) message.error(t('components.runCollection.failedLoadEnvironments'))
       })
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, t])
 
   useEffect(() => {
     return () => {
@@ -112,7 +110,7 @@ export function useRunCollection() {
     setOpen(false)
     resetProgress()
     navigate(`/runs/batches/${data.batchId}`)
-  }, [navigate, resetProgress])
+  }, [navigate, resetProgress, formatRunMessage])
 
   const connectStream = useCallback((id: string) => {
     closeStreamRef.current?.()
@@ -171,7 +169,7 @@ export function useRunCollection() {
       },
       onBatchComplete: handleBatchComplete,
       onBatchError: (data) => {
-        message.error(data.message || 'Batch run failed')
+        message.error(data.message || t('components.runCollection.batchRunFailed'))
         setRunning(false)
       },
       onConnectionError: (msg) => {
@@ -179,7 +177,7 @@ export function useRunCollection() {
         setRunning(false)
       },
     })
-  }, [handleBatchComplete])
+  }, [handleBatchComplete, t])
 
   const close = useCallback(() => {
     if (running) return
@@ -199,30 +197,30 @@ export function useRunCollection() {
       setRunning(false)
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to run collection')
+        message.error(axiosErr.response?.data?.error ?? t('components.runCollection.failedRunCollection'))
       } else {
-        message.error('Failed to run collection')
+        message.error(t('components.runCollection.failedRunCollection'))
       }
     }
-  }, [target, selectedEnvId, running, resetProgress, connectStream])
+  }, [target, selectedEnvId, running, resetProgress, connectStream, t])
 
   const handleCancel = useCallback(async () => {
     if (!batchId || cancelling) return
     setCancelling(true)
     try {
       await batchApi.cancel(batchId)
-      message.info('Batch cancellation requested')
+      message.info(t('components.runCollection.cancellationRequested'))
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string }; status?: number } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to cancel batch')
+        message.error(axiosErr.response?.data?.error ?? t('components.runCollection.failedCancelBatch'))
       } else {
-        message.error('Failed to cancel batch')
+        message.error(t('components.runCollection.failedCancelBatch'))
       }
     } finally {
       setCancelling(false)
     }
-  }, [batchId, cancelling])
+  }, [batchId, cancelling, t])
 
   const completedCount = suites.filter((s) =>
     ['SUCCESS', 'FAILURE', 'PARTIAL_FAILURE', 'CANCELLED', 'ERROR'].includes(s.status),
@@ -234,29 +232,29 @@ export function useRunCollection() {
 
   const modal = (
     <Modal
-      title="Run Collection"
+      title={t('components.runCollection.title')}
       open={open}
       onOk={running ? undefined : confirm}
       onCancel={close}
-      okText="Run"
+      okText={t('components.runCollection.run')}
       confirmLoading={running && !batchId}
       okButtonProps={{
         icon: <PlayCircleOutlined />,
         disabled: !target || target.suiteCount === 0 || running,
         style: running ? { display: 'none' } : undefined,
       }}
-      cancelText={running ? 'Close' : 'Cancel'}
+      cancelText={running ? t('common.close') : t('common.cancel')}
       cancelButtonProps={{ disabled: running }}
       footer={running ? (
         <Space>
-          <Button onClick={close} disabled>Close</Button>
+          <Button onClick={close} disabled>{t('common.close')}</Button>
           <Button
             danger
             icon={<StopOutlined />}
             loading={cancelling}
             onClick={handleCancel}
           >
-            Cancel Batch
+            {t('components.runCollection.cancelBatch')}
           </Button>
         </Space>
       ) : undefined}
@@ -268,19 +266,18 @@ export function useRunCollection() {
           {!running ? (
             <>
               <div className="form-hint" style={{ marginTop: 0 }}>
-                Run all <strong>{target.suiteCount}</strong> suite
-                {target.suiteCount === 1 ? '' : 's'} in <strong>{target.name}</strong>.
+                {t('components.runCollection.runHint', { count: target.suiteCount, name: target.name })}
               </div>
               <Form layout="vertical" requiredMark="optional" style={{ marginTop: 14 }}>
                 <Form.Item
-                  label="Environment"
-                  extra="Leave empty to use each suite's default when set."
+                  label={t('components.runCollection.environment')}
+                  extra={t('components.runCollection.environmentExtra')}
                   style={{ marginBottom: 8 }}
                 >
                   <Select
                     showSearch
                     allowClear
-                    placeholder="Select an environment (optional)"
+                    placeholder={t('components.runCollection.environmentPlaceholder')}
                     value={selectedEnvId}
                     onChange={(val) => setSelectedEnvId(val)}
                     options={environments}
@@ -295,10 +292,10 @@ export function useRunCollection() {
           ) : (
             <div>
               <div className="form-hint" style={{ marginTop: 0, marginBottom: 16 }}>
-                Running <strong>{target.name}</strong>
+                {t('components.runCollection.running', { name: target.name })}
                 {batchId && (
                   <span style={{ marginLeft: 8, color: '#888', fontSize: 12 }}>
-                    Batch {batchId.slice(0, 8)}…
+                    {t('components.runCollection.batchId', { id: batchId.slice(0, 8) })}
                   </span>
                 )}
               </div>
@@ -336,7 +333,7 @@ export function useRunCollection() {
               ) : (
                 <div style={{ color: '#888', textAlign: 'center', padding: '16px 0' }}>
                   <LoadingOutlined spin style={{ marginRight: 8 }} />
-                  Starting batch…
+                  {t('components.runCollection.startingBatch')}
                 </div>
               )}
             </div>

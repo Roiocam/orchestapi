@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Modal, Input, Form, Button, Space, Typography } from 'antd'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 
@@ -19,6 +20,7 @@ interface ManualInputModalProps {
 }
 
 export default function ManualInputModal({ open, stepName, fields, onSubmit, onCancel }: ManualInputModalProps) {
+  const { t } = useTranslation()
   const [values, setValues] = useState<Record<string, string>>({})
 
   const hasCachedFields = fields.some((f) => f.cachedValue != null)
@@ -52,16 +54,16 @@ export default function ManualInputModal({ open, stepName, fields, onSubmit, onC
       title={
         <Space>
           <ExclamationCircleOutlined style={{ color: '#d4380d' }} />
-          <span>Input Required &mdash; {stepName}</span>
+          <span>{t('components.manualInput.title', { stepName })}</span>
         </Space>
       }
       closable={false}
       maskClosable={false}
       footer={
         <Space>
-          <Button onClick={onCancel}>Cancel Run</Button>
+          <Button onClick={onCancel}>{t('components.manualInput.cancelRun')}</Button>
           <Button type="primary" disabled={!allFilled} onClick={handleSubmit}>
-            Submit
+            {t('components.manualInput.submit')}
           </Button>
         </Space>
       }
@@ -69,22 +71,22 @@ export default function ManualInputModal({ open, stepName, fields, onSubmit, onC
     >
       <Text type="secondary" style={{ display: 'block', marginBottom: 14, fontSize: 13 }}>
         {hasCachedFields
-          ? 'This dependency is being re-executed. Previous values are pre-filled — edit if needed.'
-          : 'This step needs a few values before the run can continue.'}
+          ? t('components.manualInput.cachedHint')
+          : t('components.manualInput.defaultHint')}
       </Text>
       <Form layout="vertical" requiredMark="optional">
         {fields.map((f, idx) => (
           <Form.Item
             key={f.name}
             label={f.name}
-            extra={f.cachedValue != null ? 'Pre-filled from the previous attempt.' : undefined}
+            extra={f.cachedValue != null ? t('components.manualInput.preFilledExtra') : undefined}
             style={{ marginBottom: 12 }}
           >
             {isSensitive(f.name) ? (
               <Input.Password
                 autoFocus={idx === 0}
                 value={values[f.name] ?? ''}
-                placeholder={f.defaultValue ? `Default: ${f.defaultValue}` : `Enter ${f.name}`}
+                placeholder={f.defaultValue ? t('components.manualInput.defaultPlaceholder', { value: f.defaultValue }) : t('components.manualInput.enterField', { name: f.name })}
                 onChange={(e) => setValues((prev) => ({ ...prev, [f.name]: e.target.value }))}
                 onPressEnter={allFilled ? handleSubmit : undefined}
               />
@@ -92,7 +94,7 @@ export default function ManualInputModal({ open, stepName, fields, onSubmit, onC
               <Input
                 autoFocus={idx === 0}
                 value={values[f.name] ?? ''}
-                placeholder={f.defaultValue ? `Default: ${f.defaultValue}` : `Enter ${f.name}`}
+                placeholder={f.defaultValue ? t('components.manualInput.defaultPlaceholder', { value: f.defaultValue }) : t('components.manualInput.enterField', { name: f.name })}
                 onChange={(e) => setValues((prev) => ({ ...prev, [f.name]: e.target.value }))}
                 onPressEnter={allFilled ? handleSubmit : undefined}
               />

@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ConfigProvider, Result, Button, App as AntApp } from 'antd'
+import { useAntdLocale } from './hooks/useAntdLocale'
 import AppLayout from './components/AppLayout'
 import { ProjectProvider } from './context/ProjectContext'
 import EnvironmentsPage from './pages/EnvironmentsPage'
@@ -13,19 +15,27 @@ import WebhookPage from './pages/WebhookPage'
 import ProjectsPage from './pages/ProjectsPage'
 
 function NotFoundPage() {
+  const { t } = useTranslation()
   const base = import.meta.env.BASE_URL.replace(/\/$/, '') || '/'
   return (
     <Result
       status="404"
-      title="Page not found"
-      extra={<Button type="primary" href={base}>Go to Test Suites</Button>}
+      title={t('pages.notFound.title')}
+      extra={
+        <Button type="primary" href={base}>
+          {t('pages.notFound.goToTestSuites')}
+        </Button>
+      }
     />
   )
 }
 
 function App() {
+  const antdLocale = useAntdLocale()
+
   return (
     <ConfigProvider
+      locale={antdLocale}
       componentSize="middle"
       theme={{
         token: {

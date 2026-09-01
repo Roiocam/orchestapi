@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Button,
@@ -17,6 +18,7 @@ import {
   EyeOutlined,
   StopOutlined,
 } from '@ant-design/icons'
+import type { TFunction } from 'i18next'
 import type { BatchRunDetailResponse, BatchRunResponse } from '../types/batch'
 import type { CollectionSuiteRunResult } from '../types/project'
 import type { TestRunResponse } from '../types/run'
@@ -24,6 +26,7 @@ import type { SuiteExecutionResult } from '../services/testSuiteApi'
 import { batchApi } from '../services/batchApi'
 import { runApi } from '../services/runApi'
 import RunResultsPanel from '../components/RunResultsPanel'
+import { formatDateTime } from '../utils/datetime'
 
 const { Text, Title } = Typography
 
@@ -40,7 +43,20 @@ const TRIGGER_TAG_COLOR: Record<string, string> = {
   SCHEDULED: 'purple',
 }
 
+function translateStatus(status: string, t: TFunction): string {
+  return t(`pages.runs.status${status}`, { defaultValue: status.replace('_', ' ') })
+}
+
+function translateTrigger(trigger: string, t: TFunction): string {
+  return t(`pages.runs.trigger${trigger}`, { defaultValue: trigger })
+}
+
+function translateScope(scope: string, t: TFunction): string {
+  return t(`pages.runs.scope${scope}`, { defaultValue: scope })
+}
+
 export default function BatchDetailPage() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -60,13 +76,13 @@ export default function BatchDetailPage() {
       setDetail(data)
       return data
     } catch {
-      message.error('Failed to load batch details')
+      message.error(t('pages.batchDetail.failedLoad'))
       setDetail(null)
       return null
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (!id) return
@@ -153,7 +169,7 @@ export default function BatchDetailPage() {
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 100)
     } catch {
-      message.error('Failed to export batch')
+      message.error(t('pages.batchDetail.failedExport'))
     }
   }
 
@@ -163,13 +179,13 @@ export default function BatchDetailPage() {
     try {
       const updated = await batchApi.cancel(id)
       setDetail((prev) => (prev ? { ...prev, batch: updated } : prev))
-      message.info('Batch cancellation requested')
+      message.info(t('components.runCollection.cancellationRequested'))
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to cancel batch')
+        message.error(axiosErr.response?.data?.error ?? t('components.runCollection.failedCancelBatch'))
       } else {
-        message.error('Failed to cancel batch')
+        message.error(t('components.runCollection.failedCancelBatch'))
       }
     } finally {
       setCancelling(false)
@@ -184,7 +200,7 @@ export default function BatchDetailPage() {
       const run = await runApi.get(runId)
       setViewDetail(run)
     } catch {
-      message.error('Failed to load run details')
+      message.error(t('pages.runs.failedLoadRunDetails'))
       setViewDrawer(null)
     } finally {
       setViewLoading(false)
@@ -206,9 +222,9 @@ export default function BatchDetailPage() {
           <div className="suite-detail-title-wrap">
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/runs?tab=batches')} />
             <div className="page-header-copy">
-              <div className="page-header-kicker">Batch</div>
+              <div className="page-header-kicker">{t('pages.batchDetail.kicker')}</div>
               <Title level={4} className="page-header-title" style={{ fontSize: 18 }}>
-                Batch not found
+                {t('pages.batchDetail.notFound')}
               </Title>
             </div>
           </div>
@@ -225,7 +241,7 @@ export default function BatchDetailPage() {
         <div className="suite-detail-title-wrap">
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/runs?tab=batches')} />
           <div className="page-header-copy">
-            <div className="page-header-kicker">Batch</div>
+            <div className="page-header-kicker">{t('pages.batchDetail.kicker')}</div>
             <Title level={4} className="page-header-title" style={{ fontSize: 18 }}>
               {batch.scopeName}
             </Title>
@@ -234,7 +250,7 @@ export default function BatchDetailPage() {
         <div className="page-header-actions">
           <Space>
             <Button icon={<DownloadOutlined />} onClick={handleExport}>
-              Export
+              {t('common.export')}
             </Button>
             {batch.status === 'RUNNING' && (
               <Button
@@ -243,7 +259,7 @@ export default function BatchDetailPage() {
                 loading={cancelling}
                 onClick={handleCancel}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
             )}
           </Space>
@@ -253,31 +269,35 @@ export default function BatchDetailPage() {
       <div className="product-panel" style={{ marginBottom: 14 }}>
         <div className="product-panel-header">
           <div>
-            <div className="product-panel-title">Summary</div>
+            <div className="product-panel-title">{t('pages.batchDetail.summary')}</div>
             <div className="product-panel-subtitle">
-              Collection/project batch execution status and timing.
+              {t('pages.batchDetail.summarySubtitle')}
             </div>
           </div>
         </div>
         <div className="product-panel-body">
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
             <Space wrap>
-              <Tag>{batch.scopeType}</Tag>
+              <Tag>{translateScope(batch.scopeType, t)}</Tag>
               <Tag color={STATUS_TAG_COLOR[batch.status] ?? 'default'}>
-                {batch.status.replace('_', ' ')}
+                {translateStatus(batch.status, t)}
               </Tag>
               <Tag color={TRIGGER_TAG_COLOR[batch.triggerType] ?? 'default'}>
-                {batch.triggerType}
+                {translateTrigger(batch.triggerType, t)}
               </Tag>
               <Text type="secondary">
-                {batch.succeeded} succeeded, {batch.failed} failed / {batch.totalSuites} total
+                {t('pages.batchDetail.summaryStats', {
+                  succeeded: batch.succeeded,
+                  failed: batch.failed,
+                  total: batch.totalSuites,
+                })}
               </Text>
             </Space>
             {batch.startedAt && (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Started {new Date(batch.startedAt).toLocaleString()}
+                {t('pages.batchDetail.startedAt', { time: formatDateTime(batch.startedAt) })}
                 {batch.completedAt && (
-                  <> · Completed {new Date(batch.completedAt).toLocaleString()}</>
+                  <> · {t('pages.batchDetail.completedAt', { time: formatDateTime(batch.completedAt) })}</>
                 )}
               </Text>
             )}
@@ -288,9 +308,9 @@ export default function BatchDetailPage() {
       <div className="product-panel">
         <div className="product-panel-header">
           <div>
-            <div className="product-panel-title">Suite runs</div>
+            <div className="product-panel-title">{t('pages.batchDetail.suiteRuns')}</div>
             <div className="product-panel-subtitle">
-              Open a suite run to inspect request and response bodies.
+              {t('pages.batchDetail.suiteRunsSubtitle')}
             </div>
           </div>
         </div>
@@ -302,28 +322,28 @@ export default function BatchDetailPage() {
             dataSource={runs}
             columns={[
               {
-                title: 'Suite',
+                title: t('pages.batchDetail.columnSuite'),
                 dataIndex: 'suiteName',
                 key: 'suiteName',
               },
               {
-                title: 'Status',
+                title: t('pages.runs.columnStatus'),
                 dataIndex: 'status',
                 key: 'status',
                 width: 140,
                 render: (status: string) => (
                   <Tag color={STATUS_TAG_COLOR[status] ?? 'default'}>
-                    {status.replace('_', ' ')}
+                    {translateStatus(status, t)}
                   </Tag>
                 ),
               },
               {
-                title: 'Actions',
+                title: t('common.actions'),
                 key: 'actions',
                 width: 80,
                 render: (_: unknown, record: CollectionSuiteRunResult) =>
                   record.runId ? (
-                    <Tooltip title="View run">
+                    <Tooltip title={t('pages.batchDetail.viewRun')}>
                       <Button
                         type="text"
                         size="small"
@@ -346,7 +366,7 @@ export default function BatchDetailPage() {
       </div>
 
       <Drawer
-        title="Run Details"
+        title={t('pages.batchDetail.runDetailsTitle')}
         open={!!viewDrawer}
         onClose={() => { setViewDrawer(null); setViewDetail(null) }}
         width={800}
@@ -365,7 +385,7 @@ export default function BatchDetailPage() {
           />
         ) : (
           <div style={{ color: '#888', textAlign: 'center', padding: 40 }}>
-            No result data available for this run.
+            {t('pages.batchDetail.noResultData')}
           </div>
         )}
       </Drawer>

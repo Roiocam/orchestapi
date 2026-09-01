@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Tabs,
   Input,
@@ -100,44 +101,45 @@ const ACTION_OPTIONS: { label: string; value: ResponseActionType }[] = [
   { label: 'RETRY', value: 'RETRY' },
 ]
 
-const SOURCE_OPTIONS: { label: string; value: ExtractionSourceType }[] = [
-  { label: 'Response Body', value: 'RESPONSE_BODY' },
-  { label: 'Response Header', value: 'RESPONSE_HEADER' },
-  { label: 'Status Code', value: 'STATUS_CODE' },
-  { label: 'Request Body', value: 'REQUEST_BODY' },
-  { label: 'Request Header', value: 'REQUEST_HEADER' },
-  { label: 'Query Param', value: 'QUERY_PARAM' },
-  { label: 'Request URL', value: 'REQUEST_URL' },
-]
-
-const ASSERTION_OPERATOR_OPTIONS: { label: string; value: AssertionOperatorType }[] = [
-  { label: 'Equals', value: 'EQUALS' },
-  { label: 'Not Equals', value: 'NOT_EQUALS' },
-  { label: 'Contains', value: 'CONTAINS' },
-  { label: 'Not Contains', value: 'NOT_CONTAINS' },
-  { label: 'Regex', value: 'REGEX' },
-  { label: 'Greater Than', value: 'GT' },
-  { label: 'Less Than', value: 'LT' },
-  { label: 'Greater or Equal', value: 'GTE' },
-  { label: 'Less or Equal', value: 'LTE' },
-  { label: 'Exists', value: 'EXISTS' },
-  { label: 'Not Exists', value: 'NOT_EXISTS' },
-]
-
-const DATA_TYPE_OPTIONS: { label: string; value: ExpectedDataType }[] = [
-  { label: 'String', value: 'STRING' },
-  { label: 'Number', value: 'NUMBER' },
-  { label: 'Boolean', value: 'BOOLEAN' },
-  { label: 'Array', value: 'ARRAY' },
-  { label: 'Object', value: 'OBJECT' },
-  { label: 'Null', value: 'NULL' },
-]
-
 // ---- Component ----
 
 export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHeaders = [], connectorNames = [], fileKeys = [], onSave, onCancel }: StepEditorProps) {
+  const { t } = useTranslation()
   const clientIdCounter = useRef(1)
   const genClientId = () => `_new_${clientIdCounter.current++}`
+
+  const SOURCE_OPTIONS = useMemo(() => [
+    { label: t('components.stepEditor.sourceResponseBody'), value: 'RESPONSE_BODY' as ExtractionSourceType },
+    { label: t('components.stepEditor.sourceResponseHeader'), value: 'RESPONSE_HEADER' as ExtractionSourceType },
+    { label: t('components.stepEditor.sourceStatusCode'), value: 'STATUS_CODE' as ExtractionSourceType },
+    { label: t('components.stepEditor.sourceRequestBody'), value: 'REQUEST_BODY' as ExtractionSourceType },
+    { label: t('components.stepEditor.sourceRequestHeader'), value: 'REQUEST_HEADER' as ExtractionSourceType },
+    { label: t('components.stepEditor.sourceQueryParam'), value: 'QUERY_PARAM' as ExtractionSourceType },
+    { label: t('components.stepEditor.sourceRequestUrl'), value: 'REQUEST_URL' as ExtractionSourceType },
+  ], [t])
+
+  const ASSERTION_OPERATOR_OPTIONS = useMemo(() => [
+    { label: t('components.stepEditor.opEquals'), value: 'EQUALS' as AssertionOperatorType },
+    { label: t('components.stepEditor.opNotEquals'), value: 'NOT_EQUALS' as AssertionOperatorType },
+    { label: t('components.stepEditor.opContains'), value: 'CONTAINS' as AssertionOperatorType },
+    { label: t('components.stepEditor.opNotContains'), value: 'NOT_CONTAINS' as AssertionOperatorType },
+    { label: t('components.stepEditor.opRegex'), value: 'REGEX' as AssertionOperatorType },
+    { label: t('components.stepEditor.opGt'), value: 'GT' as AssertionOperatorType },
+    { label: t('components.stepEditor.opLt'), value: 'LT' as AssertionOperatorType },
+    { label: t('components.stepEditor.opGte'), value: 'GTE' as AssertionOperatorType },
+    { label: t('components.stepEditor.opLte'), value: 'LTE' as AssertionOperatorType },
+    { label: t('components.stepEditor.opExists'), value: 'EXISTS' as AssertionOperatorType },
+    { label: t('components.stepEditor.opNotExists'), value: 'NOT_EXISTS' as AssertionOperatorType },
+  ], [t])
+
+  const DATA_TYPE_OPTIONS = useMemo(() => [
+    { label: t('components.stepEditor.dataTypeString'), value: 'STRING' as ExpectedDataType },
+    { label: t('components.stepEditor.dataTypeNumber'), value: 'NUMBER' as ExpectedDataType },
+    { label: t('components.stepEditor.dataTypeBoolean'), value: 'BOOLEAN' as ExpectedDataType },
+    { label: t('components.stepEditor.dataTypeArray'), value: 'ARRAY' as ExpectedDataType },
+    { label: t('components.stepEditor.dataTypeObject'), value: 'OBJECT' as ExpectedDataType },
+    { label: t('components.stepEditor.dataTypeNull'), value: 'NULL' as ExpectedDataType },
+  ], [t])
 
   const isNew = step === null
 
@@ -511,16 +513,16 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
   // ====================
   const handleSave = async () => {
     if (!name.trim()) {
-      message.error('Step name is required')
+      message.error(t('components.stepEditor.stepNameRequired'))
       return
     }
     if (!url.trim()) {
-      message.error('URL is required')
+      message.error(t('components.stepEditor.urlRequired'))
       return
     }
 
     if (bodyType === 'JSON' && body.trim() && jsonError) {
-      message.error('Fix JSON syntax errors before saving')
+      message.error(t('components.stepEditor.fixJsonErrors'))
       return
     }
 
@@ -559,18 +561,18 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       setSaving(true)
       if (isNew) {
         await testStepApi.create(suiteId, request)
-        message.success('Step created')
+        message.success(t('components.stepEditor.stepCreated'))
       } else {
         await testStepApi.update(suiteId, step.id, request)
-        message.success('Step updated')
+        message.success(t('components.stepEditor.stepUpdated'))
       }
       onSave()
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to save step')
+        message.error(axiosErr.response?.data?.error ?? t('components.stepEditor.failedSaveStep'))
       } else {
-        message.error('Failed to save step')
+        message.error(t('components.stepEditor.failedSaveStep'))
       }
     } finally {
       setSaving(false)
@@ -586,12 +588,12 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
     removeFn: (index: number) => void,
   ) => [
     {
-      title: 'Key',
+      title: t('components.stepEditor.key'),
       dataIndex: 'key',
       width: '40%',
       render: (_: string, record: KVRow, index: number) => (
         <Input
-          placeholder="Key"
+          placeholder={t('components.stepEditor.key')}
           value={record.key}
           onChange={(e) => updateFn(index, 'key', e.target.value)}
           size="small"
@@ -599,12 +601,12 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       ),
     },
     {
-      title: 'Value',
+      title: t('components.stepEditor.value'),
       dataIndex: 'value',
       width: '45%',
       render: (_: string, record: KVRow, index: number) => (
         <PlaceholderInput
-          placeholder="Value"
+          placeholder={t('components.stepEditor.value')}
           value={record.value}
           onChange={(val) => updateFn(index, 'value', val)}
           envVars={envVarNames}
@@ -618,7 +620,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       key: 'actions',
       width: '8%',
       render: (_: unknown, _record: KVRow, index: number) => (
-        <Popconfirm title="Remove?" onConfirm={() => removeFn(index)} okType="danger">
+        <Popconfirm title={t('components.stepEditor.removeConfirm')} onConfirm={() => removeFn(index)} okType="danger">
           <Button type="text" danger icon={<DeleteOutlined />} size="small" />
         </Popconfirm>
       ),
@@ -627,7 +629,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
 
   const dependencyColumns = [
     {
-      title: 'Depends On',
+      title: t('components.stepEditor.dependsOn'),
       dataIndex: 'dependsOnStepId',
       width: '40%',
       render: (_: string, record: DependencyRow, index: number) => (
@@ -635,7 +637,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
           showSearch
           value={record.dependsOnStepId || undefined}
           onChange={(val) => updateDependency(index, 'dependsOnStepId', val)}
-          placeholder="Select step"
+          placeholder={t('components.stepEditor.selectStep')}
           size="small"
           style={{ width: '100%' }}
           options={otherSteps.map((s) => ({ label: s.name, value: s.id }))}
@@ -646,7 +648,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       ),
     },
     {
-      title: 'Use Cache',
+      title: t('components.stepEditor.useCache'),
       dataIndex: 'useCache',
       width: '12%',
       render: (_: boolean, record: DependencyRow, index: number) => (
@@ -658,7 +660,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       ),
     },
     {
-      title: 'Reuse Input',
+      title: t('components.stepEditor.reuseInput'),
       dataIndex: 'reuseManualInput',
       width: '12%',
       render: (_: boolean, record: DependencyRow, index: number) => (
@@ -670,7 +672,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       ),
     },
     {
-      title: 'TTL',
+      title: t('components.stepEditor.ttl'),
       key: 'ttl',
       width: '18%',
       render: (_: unknown, record: DependencyRow) => {
@@ -678,9 +680,9 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
         const producer = allSteps.find((s) => s.id === record.dependsOnStepId)
         if (!producer) return <span style={{ color: '#999' }}>-</span>
         if (!producer.cacheable)
-          return <span style={{ color: '#999' }}>Not cacheable</span>
+          return <span style={{ color: '#999' }}>{t('components.stepEditor.notCacheable')}</span>
         if (producer.cacheTtlSeconds === 0)
-          return <span>Entire run</span>
+          return <span>{t('components.stepEditor.entireRun')}</span>
         return <span>{producer.cacheTtlSeconds}s</span>
       },
     },
@@ -689,7 +691,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       key: 'actions',
       width: '8%',
       render: (_: unknown, _record: DependencyRow, index: number) => (
-        <Popconfirm title="Remove?" onConfirm={() => removeDependency(index)} okType="danger">
+        <Popconfirm title={t('components.stepEditor.removeConfirm')} onConfirm={() => removeDependency(index)} okType="danger">
           <Button type="text" danger icon={<DeleteOutlined />} size="small" />
         </Popconfirm>
       ),
@@ -698,12 +700,12 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
 
   const handlerColumns = [
     {
-      title: 'Match Code',
+      title: t('components.stepEditor.matchCode'),
       dataIndex: 'matchCode',
       width: '15%',
       render: (_: string, record: HandlerRow, index: number) => (
         <Input
-          placeholder="200, 2xx, 404, 5xx"
+          placeholder={t('components.stepEditor.matchCodePlaceholder')}
           value={record.matchCode}
           onChange={(e) => updateHandler(index, 'matchCode', e.target.value)}
           size="small"
@@ -711,7 +713,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       ),
     },
     {
-      title: 'Action',
+      title: t('components.stepEditor.action'),
       dataIndex: 'action',
       width: '18%',
       render: (_: string, record: HandlerRow, index: number) => (
@@ -725,7 +727,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       ),
     },
     {
-      title: 'Side Effect Step',
+      title: t('components.stepEditor.sideEffectStep'),
       key: 'sideEffectStepId',
       width: '18%',
       render: (_: unknown, record: HandlerRow, index: number) => {
@@ -735,7 +737,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             showSearch
             value={record.sideEffectStepId || undefined}
             onChange={(val) => updateHandler(index, 'sideEffectStepId', val)}
-            placeholder="Select step"
+            placeholder={t('components.stepEditor.selectStep')}
             size="small"
             style={{ width: '100%' }}
             options={otherSteps.map((s) => ({ label: s.name, value: s.id }))}
@@ -747,7 +749,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       },
     },
     {
-      title: 'Retry Count',
+      title: t('components.stepEditor.retryCount'),
       key: 'retryCount',
       width: '12%',
       render: (_: unknown, record: HandlerRow, index: number) => {
@@ -764,7 +766,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       },
     },
     {
-      title: 'Retry Delay (s)',
+      title: t('components.stepEditor.retryDelay'),
       key: 'retryDelaySeconds',
       width: '12%',
       render: (_: unknown, record: HandlerRow, index: number) => {
@@ -781,7 +783,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       },
     },
     {
-      title: 'Priority',
+      title: t('components.stepEditor.priority'),
       dataIndex: 'priority',
       width: '10%',
       render: (_: number, record: HandlerRow, index: number) => (
@@ -798,7 +800,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       key: 'actions',
       width: '6%',
       render: (_: unknown, _record: HandlerRow, index: number) => (
-        <Popconfirm title="Remove?" onConfirm={() => removeHandler(index)} okType="danger">
+        <Popconfirm title={t('components.stepEditor.removeConfirm')} onConfirm={() => removeHandler(index)} okType="danger">
           <Button type="text" danger icon={<DeleteOutlined />} size="small" />
         </Popconfirm>
       ),
@@ -807,12 +809,12 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
 
   const extractColumns = [
     {
-      title: 'Variable Name',
+      title: t('components.stepEditor.variableName'),
       dataIndex: 'variableName',
       width: '30%',
       render: (_: string, record: ExtractRow, index: number) => (
         <Input
-          placeholder="e.g. authToken"
+          placeholder={t('components.stepEditor.variableNamePlaceholder')}
           value={record.variableName}
           onChange={(e) => updateExtractVariable(index, 'variableName', e.target.value)}
           size="small"
@@ -820,17 +822,17 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       ),
     },
     {
-      title: 'JSON Path / Key',
+      title: t('components.stepEditor.jsonPathKey'),
       dataIndex: 'jsonPath',
       width: '30%',
       render: (_: string, record: ExtractRow, index: number) => {
         const ph = record.source === 'RESPONSE_HEADER' || record.source === 'REQUEST_HEADER'
-          ? 'Header name, e.g. Authorization'
+          ? t('components.stepEditor.jsonPathHeader')
           : record.source === 'QUERY_PARAM'
-            ? 'Param name, e.g. page'
+            ? t('components.stepEditor.jsonPathParam')
             : record.source === 'STATUS_CODE' || record.source === 'REQUEST_URL'
-              ? '(not used)'
-              : 'e.g. $.data.accessToken'
+              ? t('components.stepEditor.jsonPathNotUsed')
+              : t('components.stepEditor.jsonPathPlaceholder')
         return (
           <Input
             placeholder={ph}
@@ -843,7 +845,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       },
     },
     {
-      title: 'Source',
+      title: t('components.stepEditor.source'),
       dataIndex: 'source',
       width: '25%',
       render: (_: string, record: ExtractRow, index: number) => (
@@ -861,7 +863,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       key: 'actions',
       width: '8%',
       render: (_: unknown, _record: ExtractRow, index: number) => (
-        <Popconfirm title="Remove?" onConfirm={() => removeExtractVariable(index)} okType="danger">
+        <Popconfirm title={t('components.stepEditor.removeConfirm')} onConfirm={() => removeExtractVariable(index)} okType="danger">
           <Button type="text" danger icon={<DeleteOutlined />} size="small" />
         </Popconfirm>
       ),
@@ -883,13 +885,13 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       <div style={{ padding: '4px 0 10px' }}>
         <div className="request-editor-meta">
           <Input
-            placeholder="Step name"
+            placeholder={t('components.stepEditor.stepNamePlaceholder')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             style={{ fontWeight: 560, flex: 1 }}
           />
           <Input
-            placeholder="Group (optional)"
+            placeholder={t('components.stepEditor.groupOptional')}
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
             style={{ width: 168 }}
@@ -915,7 +917,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
           />
           <div className="request-editor-url">
             <PlaceholderInput
-              placeholder="Enter request URL — e.g. /api/users/${userId} or /posts/{{step.id}}"
+              placeholder={t('components.stepEditor.urlPlaceholder')}
               value={url}
               onChange={setUrl}
               envVars={envVarNames}
@@ -927,34 +929,34 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
         <div className="request-editor-options">
           <label className="request-editor-option">
             <Switch size="small" checked={dependencyOnly} onChange={setDependencyOnly} />
-            Dependency only
+            {t('components.stepEditor.dependencyOnly')}
           </label>
           <label className="request-editor-option">
             <Switch size="small" checked={cacheable} onChange={(checked) => setCacheable(checked)} />
-            Cacheable
+            {t('components.stepEditor.cacheable')}
           </label>
           {cacheable && (
             <label className="request-editor-option">
-              TTL
+              {t('components.stepEditor.ttl')}
               <InputNumber
                 value={cacheTtlSeconds}
                 onChange={(val) => setCacheTtlSeconds(val ?? 0)}
                 min={0}
-                placeholder="0 = entire run"
+                placeholder={t('components.stepEditor.ttlPlaceholder')}
                 size="small"
                 style={{ width: 120 }}
               />
             </label>
           )}
           <label className="request-editor-option">
-            OAuth
+            {t('components.stepEditor.oauth')}
             <Select
               size="small"
               value={oauthMode}
               onChange={setOauthMode}
               options={[
-                { label: 'Inherit deployment OAuth', value: 'INHERIT' },
-                { label: 'Disable automatic OAuth', value: 'DISABLED' },
+                { label: t('components.stepEditor.oauthInherit'), value: 'INHERIT' },
+                { label: t('components.stepEditor.oauthDisabled'), value: 'DISABLED' },
               ]}
               style={{ width: 200 }}
             />
@@ -973,7 +975,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             key: 'headers',
             label: (
               <span>
-                Headers
+                {t('components.stepEditor.tabHeaders')}
                 {totalHeaders > 0 && (
                   <Badge count={totalHeaders} size="small" style={{ marginLeft: 6, backgroundColor: '#597ef7' }} />
                 )}
@@ -983,14 +985,14 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
               <div>
                 {envHeaders.length > 0 && (
                   <div style={{ marginBottom: headers.length > 0 ? 12 : 0 }}>
-                    <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Default Headers (from environment)</div>
+                    <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.defaultHeaders')}</div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid #f0f0f0', borderRadius: 4, overflow: 'hidden' }}>
                       <thead>
                         <tr style={{ background: '#fafafa', textAlign: 'left' }}>
-                          <th style={{ padding: '5px 8px', fontWeight: 500, width: 40, fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #f0f0f0' }}>On</th>
-                          <th style={{ padding: '5px 8px', fontWeight: 500, width: '30%', fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #f0f0f0' }}>Key</th>
-                          <th style={{ padding: '5px 8px', fontWeight: 500, width: '25%', fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #f0f0f0' }}>Type</th>
-                          <th style={{ padding: '5px 8px', fontWeight: 500, fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #f0f0f0' }}>Value</th>
+                          <th style={{ padding: '5px 8px', fontWeight: 500, width: 40, fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #f0f0f0' }}>{t('components.stepEditor.on')}</th>
+                          <th style={{ padding: '5px 8px', fontWeight: 500, width: '30%', fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #f0f0f0' }}>{t('components.stepEditor.key')}</th>
+                          <th style={{ padding: '5px 8px', fontWeight: 500, width: '25%', fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #f0f0f0' }}>{t('components.stepEditor.type')}</th>
+                          <th style={{ padding: '5px 8px', fontWeight: 500, fontSize: 11, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px', borderBottom: '1px solid #f0f0f0' }}>{t('components.stepEditor.value')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -998,9 +1000,9 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                           const enabled = !disabledDefaultHeaders.has(eh.headerKey)
                           const overrideValue = defaultHeaderOverrides[eh.headerKey]
                           const hasOverride = overrideValue !== undefined
-                          const displayType = eh.valueType === 'ISO_TIMESTAMP' ? 'ISO Timestamp' : eh.valueType === 'VARIABLE' ? 'Variable' : eh.valueType
+                          const displayType = eh.valueType === 'ISO_TIMESTAMP' ? t('components.stepEditor.isoTimestamp') : eh.valueType === 'VARIABLE' ? t('components.stepEditor.variable') : eh.valueType
                           const displayValue = eh.valueType === 'UUID' || eh.valueType === 'ISO_TIMESTAMP'
-                            ? '(auto-generated)'
+                            ? t('components.stepEditor.autoGenerated')
                             : (hasOverride ? overrideValue : eh.headerValue)
                           const isAutoGen = eh.valueType === 'UUID' || eh.valueType === 'ISO_TIMESTAMP'
                           return (
@@ -1026,7 +1028,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                                   <Input
                                     size="small"
                                     value={displayValue}
-                                    placeholder={eh.headerValue || 'Value'}
+                                    placeholder={eh.headerValue || t('components.stepEditor.value')}
                                     disabled={!enabled}
                                     onChange={(e) => {
                                       const val = e.target.value
@@ -1048,7 +1050,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                       </tbody>
                     </table>
                     {headers.length > 0 && (
-                      <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 12, marginBottom: 6, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Step-specific Headers</div>
+                      <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 12, marginBottom: 6, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.stepSpecificHeaders')}</div>
                     )}
                   </div>
                 )}
@@ -1058,10 +1060,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                   rowKey="_clientId"
                   pagination={false}
                   size="small"
-                  locale={{ emptyText: envHeaders.length > 0 ? 'No step-specific headers' : 'No headers added' }}
+                  locale={{ emptyText: envHeaders.length > 0 ? t('components.stepEditor.noStepSpecificHeaders') : t('components.stepEditor.noHeadersAdded') }}
                 />
                 <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addHeader} style={{ marginTop: 8 }}>
-                  Add Header
+                  {t('components.stepEditor.addHeader')}
                 </Button>
               </div>
             ),
@@ -1070,7 +1072,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             key: 'params',
             label: (
               <span>
-                Params
+                {t('components.stepEditor.tabParams')}
                 {totalParams > 0 && (
                   <Badge count={totalParams} size="small" style={{ marginLeft: 6, backgroundColor: '#597ef7' }} />
                 )}
@@ -1084,10 +1086,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                   rowKey="_clientId"
                   pagination={false}
                   size="small"
-                  locale={{ emptyText: 'No query params added' }}
+                  locale={{ emptyText: t('components.stepEditor.noQueryParams') }}
                 />
                 <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addQueryParam} style={{ marginTop: 8 }}>
-                  Add Param
+                  {t('components.stepEditor.addParam')}
                 </Button>
               </div>
             ),
@@ -1096,9 +1098,9 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             key: 'body',
             label: (
               <span>
-                Body
+                {t('components.stepEditor.tabBody')}
                 {bodyType !== 'NONE' && (
-                  <span style={{ fontSize: 11, color: '#1677ff', marginLeft: 4 }}>({bodyType === 'JSON' ? 'JSON' : 'Form'})</span>
+                  <span style={{ fontSize: 11, color: '#1677ff', marginLeft: 4 }}>({bodyType === 'JSON' ? t('components.stepEditor.bodyJson') : t('components.stepEditor.bodyForm')})</span>
                 )}
               </span>
             ),
@@ -1110,15 +1112,15 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                     value={bodyType}
                     onChange={(val) => { setBodyType(val); setJsonError(null) }}
                     options={[
-                      { label: 'None', value: 'NONE' },
-                      { label: 'JSON', value: 'JSON' },
-                      { label: 'Form Data', value: 'FORM_DATA' },
+                      { label: t('components.stepEditor.bodyNone'), value: 'NONE' },
+                      { label: t('components.stepEditor.bodyJson'), value: 'JSON' },
+                      { label: t('components.stepEditor.bodyFormData'), value: 'FORM_DATA' },
                     ]}
                     style={{ width: 140 }}
                   />
                 </div>
                 {bodyType === 'NONE' ? (
-                  <div style={{ color: '#999', fontSize: 12, padding: '8px 0' }}>No request body. Select JSON or Form Data above.</div>
+                  <div style={{ color: '#999', fontSize: 12, padding: '8px 0' }}>{t('components.stepEditor.noRequestBody')}</div>
                 ) : bodyType === 'JSON' ? (
                   <div>
                     <PlaceholderInput
@@ -1128,10 +1130,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                       onChange={handleBodyChange}
                       envVars={envVarNames}
                       depSteps={depStepInfos}
-                      placeholder='Request body (JSON). Supports: ${VAR} and {{stepName.path}}'
+                      placeholder={t('components.stepEditor.bodyJsonPlaceholder')}
                     />
                     {jsonError && (
-                      <div style={{ color: '#ff4d4f', fontSize: 11, marginTop: 4 }}>JSON Error: {jsonError}</div>
+                      <div style={{ color: '#ff4d4f', fontSize: 11, marginTop: 4 }}>{t('components.stepEditor.jsonError', { error: jsonError })}</div>
                     )}
                   </div>
                 ) : (
@@ -1139,7 +1141,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                     <Table
                       columns={[
                         {
-                          title: 'Key',
+                          title: t('components.stepEditor.key'),
                           dataIndex: 'key',
                           width: '25%',
                           render: (_: unknown, __: unknown, index: number) => (
@@ -1147,12 +1149,12 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                               size="small"
                               value={formDataFields[index].key}
                               onChange={(e) => updateFormDataField(index, 'key', e.target.value)}
-                              placeholder="Field name"
+                              placeholder={t('components.stepEditor.fieldName')}
                             />
                           ),
                         },
                         {
-                          title: 'Type',
+                          title: t('components.stepEditor.type'),
                           dataIndex: 'type',
                           width: 100,
                           render: (_: unknown, __: unknown, index: number) => (
@@ -1161,15 +1163,15 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                               value={formDataFields[index].type}
                               onChange={(val) => updateFormDataField(index, 'type', val)}
                               options={[
-                                { label: 'Text', value: 'text' },
-                                { label: 'File', value: 'file' },
+                                { label: t('components.stepEditor.fieldTypeText'), value: 'text' },
+                                { label: t('components.stepEditor.fieldTypeFile'), value: 'file' },
                               ]}
                               style={{ width: '100%' }}
                             />
                           ),
                         },
                         {
-                          title: 'Value',
+                          title: t('components.stepEditor.value'),
                           dataIndex: 'value',
                           render: (_: unknown, __: unknown, index: number) => (
                             <PlaceholderInput
@@ -1178,7 +1180,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                               envVars={envVarNames}
                               depSteps={depStepInfos}
                               fileKeys={fileKeys}
-                              placeholder={formDataFields[index].type === 'file' ? '${FILE:fileKey}' : 'Value or ${VAR}'}
+                              placeholder={formDataFields[index].type === 'file' ? t('components.stepEditor.fileValuePlaceholder') : t('components.stepEditor.valueOrVarPlaceholder')}
                             />
                           ),
                         },
@@ -1186,7 +1188,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                           title: '',
                           width: 40,
                           render: (_: unknown, __: unknown, index: number) => (
-                            <Popconfirm title="Remove?" onConfirm={() => removeFormDataField(index)} okType="danger">
+                            <Popconfirm title={t('components.stepEditor.removeConfirm')} onConfirm={() => removeFormDataField(index)} okType="danger">
                               <Button type="text" danger size="small" icon={<DeleteOutlined />} />
                             </Popconfirm>
                           ),
@@ -1196,10 +1198,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                       rowKey="_clientId"
                       pagination={false}
                       size="small"
-                      locale={{ emptyText: 'No form fields added' }}
+                      locale={{ emptyText: t('components.stepEditor.noFormFields') }}
                     />
                     <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addFormDataField} style={{ marginTop: 8 }}>
-                      Add Field
+                      {t('components.stepEditor.addField')}
                     </Button>
                   </div>
                 )}
@@ -1210,7 +1212,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             key: 'dependencies',
             label: (
               <span>
-                Dependencies
+                {t('components.stepEditor.tabDependencies')}
                 {dependencies.length > 0 && (
                   <Badge count={dependencies.length} size="small" style={{ marginLeft: 6, backgroundColor: '#73d13d' }} />
                 )}
@@ -1224,10 +1226,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                   rowKey="_clientId"
                   pagination={false}
                   size="small"
-                  locale={{ emptyText: 'No dependencies added' }}
+                  locale={{ emptyText: t('components.stepEditor.noDependencies') }}
                 />
                 <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addDependency} style={{ marginTop: 8 }}>
-                  Add Dependency
+                  {t('components.stepEditor.addDependency')}
                 </Button>
               </div>
             ),
@@ -1236,7 +1238,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             key: 'responseHandlers',
             label: (
               <span>
-                Handlers
+                {t('components.stepEditor.tabHandlers')}
                 {responseHandlers.length > 0 && (
                   <Badge count={responseHandlers.length} size="small" style={{ marginLeft: 6, backgroundColor: '#ffc53d' }} />
                 )}
@@ -1250,10 +1252,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                   rowKey="_clientId"
                   pagination={false}
                   size="small"
-                  locale={{ emptyText: 'No response handlers added' }}
+                  locale={{ emptyText: t('components.stepEditor.noResponseHandlers') }}
                 />
                 <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addHandler} style={{ marginTop: 8 }}>
-                  Add Handler
+                  {t('components.stepEditor.addHandler')}
                 </Button>
               </div>
             ),
@@ -1262,7 +1264,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             key: 'extractVariables',
             label: (
               <span>
-                Variables
+                {t('components.stepEditor.tabVariables')}
                 {extractVariables.length > 0 && (
                   <Badge count={extractVariables.length} size="small" style={{ marginLeft: 6, backgroundColor: '#ff7a45' }} />
                 )}
@@ -1276,10 +1278,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                   rowKey="_clientId"
                   pagination={false}
                   size="small"
-                  locale={{ emptyText: 'No extract variables added' }}
+                  locale={{ emptyText: t('components.stepEditor.noExtractVariables') }}
                 />
                 <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addExtractVariable} style={{ marginTop: 8 }}>
-                  Add Variable
+                  {t('components.stepEditor.addVariable')}
                 </Button>
               </div>
             ),
@@ -1288,7 +1290,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             key: 'responseValidation',
             label: (
               <span>
-                Response Validation
+                {t('components.stepEditor.tabResponseValidation')}
                 {responseValidations.length > 0 && (
                   <Badge count={responseValidations.length} size="small" style={{ marginLeft: 6, backgroundColor: '#13c2c2' }} />
                 )}
@@ -1298,16 +1300,16 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
               <div>
                 {responseValidations.length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#8c8c8c', padding: '20px 16px', fontSize: 12, background: '#fafafa', borderRadius: 4, border: '1px dashed #d9d9d9' }}>
-                    No response validations configured. Add rules to validate HTTP response headers, body structure, field values, or data types.
+                    {t('components.stepEditor.noResponseValidations')}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {responseValidations.map((rv, rvIdx) => {
                       const typeConfig: Record<string, { label: string; color: string; bg: string; border: string; icon: string }> = {
-                        HEADER: { label: 'Header', color: '#0958d9', bg: '#e6f4ff', border: '#91caff', icon: 'H' },
-                        BODY_EXACT_MATCH: { label: 'Body Match', color: '#531dab', bg: '#f9f0ff', border: '#d3adf7', icon: 'B' },
-                        BODY_FIELD: { label: 'Field', color: '#006d75', bg: '#e6fffb', border: '#87e8de', icon: 'F' },
-                        BODY_DATA_TYPE: { label: 'Type', color: '#ad4e00', bg: '#fff7e6', border: '#ffd591', icon: 'T' },
+                        HEADER: { label: t('components.stepEditor.validationHeader'), color: '#0958d9', bg: '#e6f4ff', border: '#91caff', icon: 'H' },
+                        BODY_EXACT_MATCH: { label: t('components.stepEditor.validationBodyMatch'), color: '#531dab', bg: '#f9f0ff', border: '#d3adf7', icon: 'B' },
+                        BODY_FIELD: { label: t('components.stepEditor.validationField'), color: '#006d75', bg: '#e6fffb', border: '#87e8de', icon: 'F' },
+                        BODY_DATA_TYPE: { label: t('components.stepEditor.validationType'), color: '#ad4e00', bg: '#fff7e6', border: '#ffd591', icon: 'T' },
                       }
                       const cfg = typeConfig[rv.validationType] || typeConfig.HEADER
                       return (
@@ -1316,7 +1318,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                             <span style={{ width: 20, height: 20, borderRadius: 3, background: cfg.color, color: '#fff', fontSize: 11, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{cfg.icon}</span>
                             <span style={{ fontSize: 12, fontWeight: 500, color: cfg.color }}>{cfg.label}</span>
                             <div style={{ flex: 1 }} />
-                            <Popconfirm title="Remove this validation?" onConfirm={() => removeResponseValidation(rvIdx)} okText="Yes" cancelText="No">
+                            <Popconfirm title={t('components.stepEditor.removeValidation')} onConfirm={() => removeResponseValidation(rvIdx)} okText={t('common.yes')} cancelText={t('common.no')}>
                               <Button type="text" danger size="small" icon={<DeleteOutlined />} style={{ opacity: 0.6 }} />
                             </Popconfirm>
                           </div>
@@ -1324,15 +1326,15 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                           {rv.validationType === 'HEADER' && (
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                               <div style={{ flex: 1, minWidth: 120 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Header Name</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.headerName')}</div>
                                 <Input size="small" value={rv.headerName ?? ''} onChange={(e) => updateResponseValidation(rvIdx, 'headerName', e.target.value)} placeholder="Content-Type" />
                               </div>
                               <div style={{ width: 130 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Operator</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.operator')}</div>
                                 <Select size="small" style={{ width: '100%' }} value={rv.operator ?? 'EQUALS'} onChange={(v) => updateResponseValidation(rvIdx, 'operator', v)} options={ASSERTION_OPERATOR_OPTIONS} />
                               </div>
                               <div style={{ flex: 1, minWidth: 120 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Expected Value</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.expectedValue')}</div>
                                 <PlaceholderInput size="small" value={rv.expectedValue ?? ''} onChange={(v) => updateResponseValidation(rvIdx, 'expectedValue', v)} placeholder="application/json" envVars={envVarNames} depSteps={depStepInfos} fileKeys={fileKeys} />
                               </div>
                             </div>
@@ -1341,19 +1343,19 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                           {rv.validationType === 'BODY_EXACT_MATCH' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Match Mode</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.matchMode')}</div>
                                 <Select size="small" style={{ width: 130 }} value={rv.matchMode ?? 'STRICT'} onChange={(v) => updateResponseValidation(rvIdx, 'matchMode', v)} options={[
-                                  { value: 'STRICT', label: 'Strict' },
-                                  { value: 'FLEXIBLE', label: 'Flexible' },
-                                  { value: 'STRUCTURE', label: 'Structure' },
+                                  { value: 'STRICT', label: t('components.stepEditor.matchStrict') },
+                                  { value: 'FLEXIBLE', label: t('components.stepEditor.matchFlexible') },
+                                  { value: 'STRUCTURE', label: t('components.stepEditor.matchStructure') },
                                 ]} />
                                 <span style={{ fontSize: 10, color: '#bfbfbf' }}>
-                                  {(rv.matchMode ?? 'STRICT') === 'STRICT' ? 'Exact keys, values & order' : (rv.matchMode ?? 'STRICT') === 'FLEXIBLE' ? 'Subset match, any order' : 'Keys & structure only'}
+                                  {(rv.matchMode ?? 'STRICT') === 'STRICT' ? t('components.stepEditor.matchStrictHint') : (rv.matchMode ?? 'STRICT') === 'FLEXIBLE' ? t('components.stepEditor.matchFlexibleHint') : t('components.stepEditor.matchStructureHint')}
                                 </span>
                               </div>
                               <div>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Expected Body (JSON)</div>
-                                <PlaceholderInput mode="textarea" rows={4} size="small" value={rv.expectedBody ?? ''} onChange={(v) => updateResponseValidation(rvIdx, 'expectedBody', v)} placeholder='{"key": "value"}' envVars={envVarNames} depSteps={depStepInfos} fileKeys={fileKeys} />
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.expectedBody')}</div>
+                                <PlaceholderInput mode="textarea" rows={4} size="small" value={rv.expectedBody ?? ''} onChange={(v) => updateResponseValidation(rvIdx, 'expectedBody', v)} placeholder={t('components.stepEditor.expectedBodyPlaceholder')} envVars={envVarNames} depSteps={depStepInfos} fileKeys={fileKeys} />
                               </div>
                             </div>
                           )}
@@ -1361,15 +1363,15 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                           {rv.validationType === 'BODY_FIELD' && (
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                               <div style={{ flex: 1, minWidth: 120 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>JSON Path</div>
-                                <Input size="small" value={rv.jsonPath ?? ''} onChange={(e) => updateResponseValidation(rvIdx, 'jsonPath', e.target.value)} placeholder="$.data.id" style={{ fontFamily: 'monospace' }} />
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.jsonPath')}</div>
+                                <Input size="small" value={rv.jsonPath ?? ''} onChange={(e) => updateResponseValidation(rvIdx, 'jsonPath', e.target.value)} placeholder={t('components.stepEditor.jsonPathExample')} style={{ fontFamily: 'monospace' }} />
                               </div>
                               <div style={{ width: 130 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Operator</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.operator')}</div>
                                 <Select size="small" style={{ width: '100%' }} value={rv.operator ?? 'EQUALS'} onChange={(v) => updateResponseValidation(rvIdx, 'operator', v)} options={ASSERTION_OPERATOR_OPTIONS} />
                               </div>
                               <div style={{ flex: 1, minWidth: 120 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Expected Value</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.expectedValue')}</div>
                                 <PlaceholderInput size="small" value={rv.expectedValue ?? ''} onChange={(v) => updateResponseValidation(rvIdx, 'expectedValue', v)} placeholder="expected" envVars={envVarNames} depSteps={depStepInfos} fileKeys={fileKeys} />
                               </div>
                             </div>
@@ -1379,10 +1381,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                               <div style={{ flex: 1, minWidth: 150 }}>
                                 <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>JSON Path</div>
-                                <Input size="small" value={rv.jsonPath ?? ''} onChange={(e) => updateResponseValidation(rvIdx, 'jsonPath', e.target.value)} placeholder="$.data.count" style={{ fontFamily: 'monospace' }} />
+                                <Input size="small" value={rv.jsonPath ?? ''} onChange={(e) => updateResponseValidation(rvIdx, 'jsonPath', e.target.value)} placeholder={t('components.stepEditor.jsonPathCountExample')} style={{ fontFamily: 'monospace' }} />
                               </div>
                               <div style={{ width: 140 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Expected Type</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.expectedType')}</div>
                                 <Select size="small" style={{ width: '100%' }} value={rv.expectedType ?? 'STRING'} onChange={(v) => updateResponseValidation(rvIdx, 'expectedType', v)} options={DATA_TYPE_OPTIONS} />
                               </div>
                             </div>
@@ -1393,10 +1395,10 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                   </div>
                 )}
                 <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <Button size="small" icon={<PlusOutlined />} onClick={() => addResponseValidation('HEADER')} style={{ borderColor: '#91caff', color: '#0958d9' }}>Header</Button>
-                  <Button size="small" icon={<PlusOutlined />} onClick={() => addResponseValidation('BODY_EXACT_MATCH')} style={{ borderColor: '#d3adf7', color: '#531dab' }}>Body Match</Button>
-                  <Button size="small" icon={<PlusOutlined />} onClick={() => addResponseValidation('BODY_FIELD')} style={{ borderColor: '#87e8de', color: '#006d75' }}>Field</Button>
-                  <Button size="small" icon={<PlusOutlined />} onClick={() => addResponseValidation('BODY_DATA_TYPE')} style={{ borderColor: '#ffd591', color: '#ad4e00' }}>Type</Button>
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => addResponseValidation('HEADER')} style={{ borderColor: '#91caff', color: '#0958d9' }}>{t('components.stepEditor.validationHeader')}</Button>
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => addResponseValidation('BODY_EXACT_MATCH')} style={{ borderColor: '#d3adf7', color: '#531dab' }}>{t('components.stepEditor.validationBodyMatch')}</Button>
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => addResponseValidation('BODY_FIELD')} style={{ borderColor: '#87e8de', color: '#006d75' }}>{t('components.stepEditor.validationField')}</Button>
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => addResponseValidation('BODY_DATA_TYPE')} style={{ borderColor: '#ffd591', color: '#ad4e00' }}>{t('components.stepEditor.validationType')}</Button>
                 </div>
               </div>
             ),
@@ -1405,7 +1407,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
             key: 'verifications',
             label: (
               <span>
-                Verifications
+                {t('components.stepEditor.tabVerifications')}
                 {verifications.length > 0 && (
                   <Badge count={verifications.length} size="small" style={{ marginLeft: 6, backgroundColor: '#722ed1' }} />
                 )}
@@ -1415,7 +1417,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
               <div>
                 {verifications.length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#8c8c8c', padding: '20px 16px', fontSize: 12, background: '#fafafa', borderRadius: 4, border: '1px dashed #d9d9d9' }}>
-                    No infrastructure verifications configured. Add rules to verify database state, message queues, or cache after API execution.
+                    {t('components.stepEditor.noVerifications')}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1435,12 +1437,12 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                         >
                           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Connector</div>
+                              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.connector')}</div>
                               <Select
                                 showSearch
                                 value={v.connectorName || undefined}
                                 onChange={(val) => updateVerification(vIdx, 'connectorName', val)}
-                                placeholder="Select connector"
+                                placeholder={t('components.stepEditor.selectConnector')}
                                 size="small"
                                 style={{ width: '100%' }}
                                 options={connectorNames.map((c) => ({ label: `${c.name} (${c.type})`, value: c.name }))}
@@ -1451,7 +1453,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                             </div>
                             <div style={{ width: 90 }}>
                               <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                                {showPreListen ? 'Timeout (s)' : 'Delay (s)'}
+                                {showPreListen ? t('components.stepEditor.timeoutSeconds') : t('components.stepEditor.delaySeconds')}
                               </div>
                               <InputNumber
                                 value={v.timeoutSeconds}
@@ -1463,7 +1465,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                             </div>
                             {!showPreListen && (
                               <div style={{ width: 110 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Query Timeout (s)</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.queryTimeoutSeconds')}</div>
                                 <InputNumber
                                   value={v.queryTimeoutSeconds}
                                   onChange={(val) => updateVerification(vIdx, 'queryTimeoutSeconds', val ?? 30)}
@@ -1479,12 +1481,12 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                                   checked={v.preListen}
                                   onChange={(e) => updateVerification(vIdx, 'preListen', e.target.checked)}
                                 >
-                                  Pre-Listen
+                                  {t('components.stepEditor.preListen')}
                                 </Checkbox>
                               </div>
                             )}
                             <div style={{ paddingTop: 18 }}>
-                              <Popconfirm title="Remove verification?" onConfirm={() => removeVerification(vIdx)} okType="danger">
+                              <Popconfirm title={t('components.stepEditor.removeVerification')} onConfirm={() => removeVerification(vIdx)} okType="danger">
                                 <Button type="text" danger icon={<DeleteOutlined />} size="small" style={{ opacity: 0.6 }} />
                               </Popconfirm>
                             </div>
@@ -1493,31 +1495,31 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                           {connectorType === 'KAFKA' ? (
                             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Topic</div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.topic')}</div>
                                 <PlaceholderInput
                                   value={parseKafkaQuery(v.query).topic}
                                   onChange={(val) => updateVerification(vIdx, 'query', buildKafkaQuery(val, parseKafkaQuery(v.query).key))}
                                   envVars={envVarNames}
                                   depSteps={verificationDepStepInfos}
-                                  placeholder="e.g. order-events or ${TOPIC_NAME}"
+                                  placeholder={t('components.stepEditor.topicPlaceholder')}
                                   size="small"
                                 />
                               </div>
                               <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Key <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional)</span></div>
+                                <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.keyOptional')}</div>
                                 <PlaceholderInput
                                   value={parseKafkaQuery(v.query).key}
                                   onChange={(val) => updateVerification(vIdx, 'query', buildKafkaQuery(parseKafkaQuery(v.query).topic, val))}
                                   envVars={envVarNames}
                                   depSteps={verificationDepStepInfos}
-                                  placeholder="e.g. {{stepName.id}} or ${VAR}"
+                                  placeholder={t('components.stepEditor.keyPlaceholder')}
                                   size="small"
                                 />
                               </div>
                             </div>
                           ) : (
                             <div style={{ marginBottom: 8 }}>
-                              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Query</div>
+                              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.query')}</div>
                               <PlaceholderInput
                                 mode="textarea"
                                 rows={3}
@@ -1525,7 +1527,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                                 onChange={(val) => updateVerification(vIdx, 'query', val)}
                                 envVars={envVarNames}
                                 depSteps={verificationDepStepInfos}
-                                placeholder="SQL query, Redis command, etc. Supports ${VAR} and {{stepName.path}}"
+                                placeholder={t('components.stepEditor.queryPlaceholder')}
                                 size="small"
                               />
                             </div>
@@ -1533,20 +1535,20 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
 
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                              <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Assertions ({v.assertions.length})</span>
+                              <span style={{ fontSize: 11, color: '#8c8c8c', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.stepEditor.assertions', { count: v.assertions.length })}</span>
                               <Button size="small" icon={<PlusOutlined />} onClick={() => addAssertion(vIdx)} style={{ borderColor: '#d3adf7', color: '#531dab' }}>
-                                Add Assertion
+                                {t('components.stepEditor.addAssertion')}
                               </Button>
                             </div>
                             <Table
                               columns={[
                                 {
-                                  title: 'JSON Path',
+                                  title: t('components.stepEditor.jsonPath'),
                                   dataIndex: 'jsonPath',
                                   width: '35%',
                                   render: (_: string, record: AssertionRow, aIdx: number) => (
                                     <Input
-                                      placeholder="e.g. $.count or $[0].status"
+                                      placeholder={t('components.stepEditor.jsonPathAssertionPlaceholder')}
                                       value={record.jsonPath}
                                       onChange={(e) => updateAssertion(vIdx, aIdx, 'jsonPath', e.target.value)}
                                       size="small"
@@ -1554,7 +1556,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                                   ),
                                 },
                                 {
-                                  title: 'Operator',
+                                  title: t('components.stepEditor.operator'),
                                   dataIndex: 'operator',
                                   width: '22%',
                                   render: (_: string, record: AssertionRow, aIdx: number) => (
@@ -1568,12 +1570,12 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                                   ),
                                 },
                                 {
-                                  title: 'Expected Value',
+                                  title: t('components.stepEditor.expectedValue'),
                                   dataIndex: 'expectedValue',
                                   width: '33%',
                                   render: (_: string, record: AssertionRow, aIdx: number) => (
                                     <PlaceholderInput
-                                      placeholder="Expected value"
+                                      placeholder={t('components.stepEditor.expectedValuePlaceholder')}
                                       value={record.expectedValue}
                                       onChange={(val) => updateAssertion(vIdx, aIdx, 'expectedValue', val)}
                                       envVars={envVarNames}
@@ -1587,7 +1589,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                                   key: 'actions',
                                   width: '8%',
                                   render: (_: unknown, _record: AssertionRow, aIdx: number) => (
-                                    <Popconfirm title="Remove?" onConfirm={() => removeAssertion(vIdx, aIdx)} okType="danger">
+                                    <Popconfirm title={t('components.stepEditor.removeConfirm')} onConfirm={() => removeAssertion(vIdx, aIdx)} okType="danger">
                                       <Button type="text" danger icon={<DeleteOutlined />} size="small" />
                                     </Popconfirm>
                                   ),
@@ -1597,7 +1599,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                               rowKey="_clientId"
                               pagination={false}
                               size="small"
-                              locale={{ emptyText: 'No assertions added' }}
+                              locale={{ emptyText: t('components.stepEditor.noAssertions') }}
                             />
                           </div>
                         </div>
@@ -1606,7 +1608,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
                   </div>
                 )}
                 <Button size="small" icon={<PlusOutlined />} onClick={addVerification} style={{ marginTop: 10, borderColor: '#d3adf7', color: '#531dab' }}>
-                  Add Verification
+                  {t('components.stepEditor.addVerification')}
                 </Button>
               </div>
             ),
@@ -1616,9 +1618,9 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
 
       {/* ===== SAVE / CANCEL ===== */}
       <div className="step-editor-footer">
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button onClick={onCancel}>{t('common.cancel')}</Button>
         <Button type="primary" onClick={handleSave} loading={saving}>
-          Save step
+          {t('components.stepEditor.saveStep')}
         </Button>
       </div>
     </div>

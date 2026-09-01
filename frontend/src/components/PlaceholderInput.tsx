@@ -1,5 +1,7 @@
 import { useRef, useState, useLayoutEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Input, Tag, Typography } from 'antd'
+import type { TFunction } from 'i18next'
 
 // ---- Types ----
 
@@ -92,6 +94,7 @@ function buildSuggestions(
   envVars: string[],
   depSteps: DepStepInfo[],
   fileKeys: string[] = [],
+  t: TFunction,
 ): Suggestion[] {
   const lower = trigger.partial.toLowerCase()
 
@@ -101,7 +104,7 @@ function buildSuggestions(
       .map((k) => ({
         label: k,
         insertText: k + '}',
-        tag: 'file',
+        tag: t('components.placeholderInput.tagFile'),
         tagColor: 'orange',
       }))
   }
@@ -112,7 +115,7 @@ function buildSuggestions(
       .map((v) => ({
         label: v,
         insertText: v + '}',
-        tag: 'env',
+        tag: t('components.placeholderInput.tagEnv'),
         tagColor: 'green',
       }))
   }
@@ -123,12 +126,12 @@ function buildSuggestions(
       .map((s) => ({
         label: s.name,
         insertText: s.name + '.',
-        tag: `${s.variables.length} vars`,
+        tag: t('components.placeholderInput.varsCount', { count: s.variables.length }),
         tagColor: 'blue',
         description:
           s.variables.length > 0
             ? s.variables.slice(0, 3).join(', ') + (s.variables.length > 3 ? '...' : '')
-            : 'type any response path',
+            : t('components.placeholderInput.typeAnyPath'),
       }))
   }
 
@@ -141,16 +144,16 @@ function buildSuggestions(
       .map((v) => ({
         label: v,
         insertText: v + '}}',
-        tag: 'extracted',
+        tag: t('components.placeholderInput.tagExtracted'),
         tagColor: 'purple',
       }))
 
     // Add custom path option when typing something not in the list
     if (lower.length > 0 && !step.variables.some((v) => v.toLowerCase() === lower)) {
       items.push({
-        label: `${trigger.partial} (custom path)`,
+        label: t('components.placeholderInput.customPath', { path: trigger.partial }),
         insertText: trigger.partial + '}}',
-        tag: 'custom',
+        tag: t('components.placeholderInput.tagCustom'),
         tagColor: 'default',
       })
     }
@@ -221,6 +224,7 @@ export default function PlaceholderInput({
   style,
   rows,
 }: PlaceholderInputProps) {
+  const { t } = useTranslation()
   const wrapperRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -295,18 +299,18 @@ export default function PlaceholderInput({
       return
     }
 
-    const items = buildSuggestions(trigger, envVars, depSteps, fileKeys)
+    const items = buildSuggestions(trigger, envVars, depSteps, fileKeys, t)
     if (items.length === 0) {
       setSuggestions([])
       setVisible(true)
       setEmptyHint(
         trigger.type === 'file'
-          ? 'No files uploaded — upload files in Environment detail page'
+          ? t('components.placeholderInput.noFiles')
           : trigger.type === 'env'
-            ? 'No environment variables found'
+            ? t('components.placeholderInput.noEnvVars')
             : trigger.type === 'step'
-              ? 'No dependent steps — add dependencies first'
-              : `Step "${trigger.stepName}" not found in dependencies`,
+              ? t('components.placeholderInput.noDepSteps')
+              : t('components.placeholderInput.stepNotFound', { name: trigger.stepName }),
       )
       return
     }
@@ -486,7 +490,7 @@ export default function PlaceholderInput({
                   {triggerRef.current?.type === 'stepVar' &&
                     `{{${triggerRef.current.stepName}.___}}`}
                 </span>
-                <span>Tab / Enter to select</span>
+                <span>{t('components.placeholderInput.selectHint')}</span>
               </div>
               {suggestions.map((s, i) => (
                 <div

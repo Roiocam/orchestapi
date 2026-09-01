@@ -8,27 +8,29 @@ import {
   ProjectOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import SuiteExplorer from './SuiteExplorer'
+import LanguageSwitcher from './LanguageSwitcher'
 
 const { Sider, Content, Header } = Layout
 
 const navItems = [
-  { key: '/', icon: <ExperimentOutlined />, label: 'Suites' },
-  { key: '/projects', icon: <ProjectOutlined />, label: 'Projects' },
-  { key: '/environments', icon: <SettingOutlined />, label: 'Envs' },
-  { key: '/runs', icon: <PlayCircleOutlined />, label: 'Runs' },
-  { key: '/mock-server', icon: <CloudServerOutlined />, label: 'Mock' },
-  { key: '/webhooks', icon: <NodeIndexOutlined />, label: 'Webhooks' },
+  { key: '/', icon: <ExperimentOutlined />, labelKey: 'nav.suites' },
+  { key: '/projects', icon: <ProjectOutlined />, labelKey: 'nav.projects' },
+  { key: '/environments', icon: <SettingOutlined />, labelKey: 'nav.envs' },
+  { key: '/runs', icon: <PlayCircleOutlined />, labelKey: 'nav.runs' },
+  { key: '/mock-server', icon: <CloudServerOutlined />, labelKey: 'nav.mock' },
+  { key: '/webhooks', icon: <NodeIndexOutlined />, labelKey: 'nav.webhooks' },
 ]
 
-const pageLabelMap: Record<string, string> = {
-  '/': 'Suites',
-  '/test-suites': 'Suites',
-  '/projects': 'Projects',
-  '/environments': 'Environments',
-  '/runs': 'Runs',
-  '/mock-server': 'Mock Server',
-  '/webhooks': 'Webhooks',
+const pageLabelKeys: Record<string, string> = {
+  '/': 'nav.suites',
+  '/test-suites': 'nav.suites',
+  '/projects': 'nav.projects',
+  '/environments': 'nav.environments',
+  '/runs': 'nav.runs',
+  '/mock-server': 'nav.mockServer',
+  '/webhooks': 'nav.webhooks',
 }
 
 function isSuiteWorkspace(pathname: string) {
@@ -36,22 +38,23 @@ function isSuiteWorkspace(pathname: string) {
 }
 
 export default function AppLayout() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const { token } = theme.useToken()
 
-  const matchedKey = Object.keys(pageLabelMap)
+  const matchedKey = Object.keys(pageLabelKeys)
     .filter((k) => location.pathname.startsWith(k) && k !== '/')
     .sort((a, b) => b.length - a.length)[0] ?? '/'
 
   const selectedKey = matchedKey === '/test-suites' ? '/' : matchedKey
-  const pageLabel = pageLabelMap[matchedKey] ?? 'Suites'
+  const pageLabel = t(pageLabelKeys[matchedKey] ?? 'nav.suites')
   const showExplorer = isSuiteWorkspace(location.pathname)
 
   return (
     <Layout className="app-shell">
       <a className="skip-to-content" href="#main-content">
-        Skip to main content
+        {t('common.skipToContent')}
       </a>
 
       {/* Icon rail — Postman/Bruno style primary nav */}
@@ -63,22 +66,24 @@ export default function AppLayout() {
         trigger={null}
       >
         <div className="app-icon-rail-logo">
-          <img src="/icon.svg" alt="OrchestAPI" width={22} height={22} />
+          <img src="/icon.svg" alt={t('common.appName')} width={22} height={22} />
         </div>
-        <nav className="app-icon-rail-nav" aria-label="Primary">
+        <nav className="app-icon-rail-nav" aria-label={t('common.primaryNav')}>
           {navItems.map((item) => {
             const isActive = item.key === selectedKey
+            const itemPageLabel = t(pageLabelKeys[item.key] ?? item.labelKey)
+            const itemNavLabel = t(item.labelKey)
             return (
               <button
                 key={item.key}
                 type="button"
                 className={`app-icon-rail-item${isActive ? ' is-active' : ''}`}
-                aria-label={pageLabelMap[item.key] || item.label}
+                aria-label={itemPageLabel}
                 aria-current={isActive ? 'page' : undefined}
                 onClick={() => navigate(item.key)}
               >
                 <span className="app-icon-rail-icon">{item.icon}</span>
-                <span className="app-icon-rail-label">{item.label}</span>
+                <span className="app-icon-rail-label">{itemNavLabel}</span>
               </button>
             )
           })}
@@ -87,7 +92,7 @@ export default function AppLayout() {
 
       {/* Explorer panel — collections as folders */}
       {showExplorer && (
-        <aside className="app-explorer" aria-label="Suite explorer">
+        <aside className="app-explorer" aria-label={t('common.suiteExplorer')}>
           <SuiteExplorer />
         </aside>
       )}
@@ -98,9 +103,12 @@ export default function AppLayout() {
           style={{ borderBottomColor: token.colorBorderSecondary }}
         >
           <div className="app-workbench-title">{pageLabel}</div>
-          {!showExplorer && (
-            <div className="app-workbench-meta">OrchestAPI</div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {!showExplorer && (
+              <div className="app-workbench-meta">{t('common.appName')}</div>
+            )}
+            <LanguageSwitcher />
+          </div>
         </Header>
         <Content id="main-content" className="app-workbench-content">
           <Outlet />

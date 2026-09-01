@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Table,
@@ -34,6 +35,8 @@ import {
 import type { FilterDropdownProps } from 'antd/es/table/interface'
 import type { Dayjs } from 'dayjs'
 import cronstrue from 'cronstrue'
+import 'cronstrue/locales/zh_CN'
+import type { TFunction } from 'i18next'
 import type { PageResponse } from '../types/environment'
 import type { TestRunResponse, RunScheduleResponse, RunScheduleRequest, CronPreviewResponse, RunListParams, ScheduleNotifyLogResponse } from '../types/run'
 import type { BatchRunResponse } from '../types/batch'
@@ -45,13 +48,31 @@ import { testSuiteApi } from '../services/testSuiteApi'
 import { environmentApi } from '../services/environmentApi'
 import { projectApi, collectionApi } from '../services/projectApi'
 import RunResultsPanel from '../components/RunResultsPanel'
+import { formatDateTime } from '../utils/datetime'
 
 const { Text } = Typography
 const { RangePicker } = DatePicker
 
-const COLUMN_LABELS: Record<string, string> = {
-  suiteName: 'Suite Name',
-  environmentName: 'Environment',
+function columnLabel(dataIndex: string, t: TFunction): string {
+  if (dataIndex === 'suiteName') return t('pages.runs.columnSuiteName')
+  if (dataIndex === 'environmentName') return t('pages.runs.columnEnvironment')
+  return dataIndex
+}
+
+function getCronstrueLocale(language: string): string {
+  return language.startsWith('zh') ? 'zh_CN' : 'en'
+}
+
+function translateStatus(status: string, t: TFunction): string {
+  return t(`pages.runs.status${status}`, { defaultValue: status.replace('_', ' ') })
+}
+
+function translateTrigger(trigger: string, t: TFunction): string {
+  return t(`pages.runs.trigger${trigger}`, { defaultValue: trigger })
+}
+
+function translateScope(scope: string, t: TFunction): string {
+  return t(`pages.runs.scope${scope}`, { defaultValue: scope })
 }
 
 const STATUS_TAG_COLOR: Record<string, string> = {
@@ -81,6 +102,7 @@ function ColumnSearch({
   onApply: (dataIndex: string, value: string) => void
   onReset: (dataIndex: string) => void
 }) {
+  const { t } = useTranslation()
   const [localValue, setLocalValue] = useState(appliedValue)
   const inputRef = useRef<InputRef>(null)
   const { close } = filterDropdownProps
@@ -96,7 +118,7 @@ function ColumnSearch({
     <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
       <Input
         ref={inputRef}
-        placeholder={`Search ${COLUMN_LABELS[dataIndex] ?? dataIndex}`}
+        placeholder={t('common.searchColumn', { column: columnLabel(dataIndex, t) })}
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         onPressEnter={() => {
@@ -116,7 +138,7 @@ function ColumnSearch({
             close()
           }}
         >
-          Search
+          {t('common.search')}
         </Button>
         <Button
           size="small"
@@ -126,10 +148,10 @@ function ColumnSearch({
             close()
           }}
         >
-          Reset
+          {t('common.reset')}
         </Button>
         <Button type="link" size="small" onClick={() => close()}>
-          Close
+          {t('common.close')}
         </Button>
       </Space>
     </div>
@@ -144,6 +166,7 @@ function formatDuration(ms: number): string {
 
 // ────────────────── Main Component ──────────────────
 export default function RunsPage() {
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get('tab') ?? 'history'
@@ -279,7 +302,7 @@ export default function RunsPage() {
         const result = await runApi.list(params)
         if (!cancelled) setData(result)
       } catch {
-        if (!cancelled) message.error('Failed to load runs')
+        if (!cancelled) message.error(t('pages.runs.failedLoadRuns'))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -307,7 +330,7 @@ export default function RunsPage() {
         })
         if (!cancelled) setBatchData(result)
       } catch {
-        if (!cancelled) message.error('Failed to load batches')
+        if (!cancelled) message.error(t('pages.runs.failedLoadBatches'))
       } finally {
         if (!cancelled) setBatchLoading(false)
       }
@@ -338,7 +361,7 @@ export default function RunsPage() {
         })
         if (!cancelled) setScheduleData(result)
       } catch {
-        if (!cancelled) message.error('Failed to load schedules')
+        if (!cancelled) message.error(t('pages.runs.failedLoadSchedules'))
       } finally {
         if (!cancelled) setScheduleLoading(false)
       }
@@ -362,7 +385,7 @@ export default function RunsPage() {
         })
         if (!cancelled) setNotifyLogData(result)
       } catch {
-        if (!cancelled) message.error('Failed to load notify logs')
+        if (!cancelled) message.error(t('pages.runs.failedLoadNotifyLogs'))
       } finally {
         if (!cancelled) setNotifyLogLoading(false)
       }
@@ -392,7 +415,7 @@ export default function RunsPage() {
       setProjectOptions(projects.map((p) => ({ value: p.id, label: p.name })))
       setEnvOptions(envsRes.content.map((e) => ({ value: e.id, label: e.name })))
     } catch {
-      message.error('Failed to load dropdown options')
+      message.error(t('pages.runs.failedLoadDropdownOptions'))
     }
   }, [])
 
@@ -426,7 +449,7 @@ export default function RunsPage() {
       const detail = await runApi.get(id)
       setViewDetail(detail)
     } catch {
-      message.error('Failed to load run details')
+      message.error(t('pages.runs.failedLoadRunDetails'))
       setViewDrawer(null)
     } finally {
       setViewLoading(false)
@@ -444,7 +467,7 @@ export default function RunsPage() {
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 100)
     } catch {
-      message.error('Failed to export run')
+      message.error(t('pages.runs.failedExportRun'))
     }
   }
 
@@ -459,7 +482,7 @@ export default function RunsPage() {
       a.click()
       setTimeout(() => URL.revokeObjectURL(url), 100)
     } catch {
-      message.error('Failed to export batch')
+      message.error(t('pages.runs.failedExportBatch'))
     }
   }
 
@@ -470,10 +493,10 @@ export default function RunsPage() {
   const handleDeleteRun = async (id: string) => {
     try {
       await runApi.delete(id)
-      message.success('Run deleted')
+      message.success(t('pages.runs.runDeleted'))
       setRefreshKey((k) => k + 1)
     } catch {
-      message.error('Failed to delete run')
+      message.error(t('pages.runs.failedDeleteRun'))
     }
   }
 
@@ -489,7 +512,7 @@ export default function RunsPage() {
     try {
       await scheduleApi.toggle(id)
     } catch {
-      message.error('Failed to toggle schedule')
+      message.error(t('pages.runs.failedToggleSchedule'))
       setScheduleRefreshKey((k) => k + 1) // revert by refetching
     }
   }
@@ -498,7 +521,7 @@ export default function RunsPage() {
     setRunningNowIds((prev) => new Set(prev).add(id))
     try {
       await scheduleApi.runNow(id)
-      message.success('Schedule run started')
+      message.success(t('pages.runs.scheduleRunStarted'))
       setScheduleRefreshKey((k) => k + 1)
       setNotifyLogRefreshKey((k) => k + 1)
       setRefreshKey((k) => k + 1)
@@ -506,9 +529,9 @@ export default function RunsPage() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to start schedule')
+        message.error(axiosErr.response?.data?.error ?? t('pages.runs.failedStartSchedule'))
       } else {
-        message.error('Failed to start schedule')
+        message.error(t('pages.runs.failedStartSchedule'))
       }
     } finally {
       setRunningNowIds((prev) => {
@@ -522,10 +545,10 @@ export default function RunsPage() {
   const handleDeleteSchedule = async (id: string) => {
     try {
       await scheduleApi.delete(id)
-      message.success('Schedule deleted')
+      message.success(t('pages.runs.scheduleDeleted'))
       setScheduleRefreshKey((k) => k + 1)
     } catch {
-      message.error('Failed to delete schedule')
+      message.error(t('pages.runs.failedDeleteSchedule'))
     }
   }
 
@@ -576,7 +599,7 @@ export default function RunsPage() {
         try {
           const parsed = JSON.parse(rawExtra) as unknown
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            message.error('Extra labels must be a JSON object of string keys/values')
+            message.error(t('pages.runs.extraLabelsMustBeObject'))
             return
           }
           notifyExtraLabels = {}
@@ -584,7 +607,7 @@ export default function RunsPage() {
             notifyExtraLabels[k] = v == null ? '' : String(v)
           }
         } catch {
-          message.error('Extra labels must be valid JSON')
+          message.error(t('pages.runs.extraLabelsInvalidJson'))
           return
         }
       }
@@ -605,10 +628,10 @@ export default function RunsPage() {
       }
       if (editingSchedule) {
         await scheduleApi.update(editingSchedule.id, payload)
-        message.success('Schedule updated')
+        message.success(t('pages.runs.scheduleUpdated'))
       } else {
         await scheduleApi.create(payload)
-        message.success('Schedule created')
+        message.success(t('pages.runs.scheduleCreated'))
       }
       setScheduleModalOpen(false)
       setScheduleRefreshKey((k) => k + 1)
@@ -616,7 +639,7 @@ export default function RunsPage() {
       // Validation errors are handled by the form; only show API errors
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error || 'Failed to save schedule')
+        message.error(axiosErr.response?.data?.error || t('pages.runs.failedSaveSchedule'))
       }
     } finally {
       setScheduleSubmitting(false)
@@ -674,16 +697,19 @@ export default function RunsPage() {
   let cronReadable: { text: string; error: boolean } = { text: '', error: false }
   if (cronValue.trim()) {
     try {
-      cronReadable = { text: cronstrue.toString(cronValue.trim()), error: false }
+      cronReadable = {
+        text: cronstrue.toString(cronValue.trim(), { locale: getCronstrueLocale(i18n.language) }),
+        error: false,
+      }
     } catch {
-      cronReadable = { text: 'Invalid expression', error: true }
+      cronReadable = { text: t('pages.runs.invalidCronExpression'), error: true }
     }
   }
 
   // ──── Run History columns ────
   const runColumns = [
     {
-      title: 'S.No',
+      title: t('common.sno'),
       key: 'sno',
       width: 60,
       render: (_: unknown, __: TestRunResponse, index: number) => (
@@ -691,38 +717,38 @@ export default function RunsPage() {
       ),
     },
     {
-      title: 'Suite Name',
+      title: t('pages.runs.columnSuiteName'),
       dataIndex: 'suiteName',
       key: 'suiteName',
       ...columnSearchProps('suiteName'),
       render: (name: string) => <strong>{name}</strong>,
     },
     {
-      title: 'Environment',
+      title: t('pages.runs.columnEnvironment'),
       dataIndex: 'environmentName',
       key: 'environmentName',
       ...columnSearchProps('environmentName'),
     },
     {
-      title: 'Status',
+      title: t('pages.runs.columnStatus'),
       dataIndex: 'status',
       key: 'status',
       width: 140,
       render: (status: TestRunResponse['status']) => (
-        <Tag color={STATUS_TAG_COLOR[status] ?? 'default'}>{status.replace('_', ' ')}</Tag>
+        <Tag color={STATUS_TAG_COLOR[status] ?? 'default'}>{translateStatus(status, t)}</Tag>
       ),
     },
     {
-      title: 'Trigger',
+      title: t('pages.runs.columnTrigger'),
       dataIndex: 'triggerType',
       key: 'triggerType',
       width: 100,
       render: (trigger: TestRunResponse['triggerType']) => (
-        <Tag color={TRIGGER_TAG_COLOR[trigger] ?? 'default'}>{trigger}</Tag>
+        <Tag color={TRIGGER_TAG_COLOR[trigger] ?? 'default'}>{translateTrigger(trigger, t)}</Tag>
       ),
     },
     {
-      title: 'Duration',
+      title: t('pages.runs.columnDuration'),
       dataIndex: 'totalDurationMs',
       key: 'totalDurationMs',
       width: 100,
@@ -731,28 +757,28 @@ export default function RunsPage() {
       render: (ms: number) => (ms != null ? formatDuration(ms) : '\u2014'),
     },
     {
-      title: 'Started At',
+      title: t('pages.runs.columnStartedAt'),
       dataIndex: 'startedAt',
       key: 'startedAt',
       width: 170,
       sorter: true,
       sortOrder: sortBy === 'startedAt' ? (sortDir === 'asc' ? ('ascend' as const) : ('descend' as const)) : null,
-      render: (v: string | null) => (v ? new Date(v).toLocaleString() : '\u2014'),
+      render: (v: string | null) => formatDateTime(v),
     },
     {
-      title: 'Actions',
+      title: t('common.actions'),
       key: 'actions',
       width: 120,
       render: (_: unknown, record: TestRunResponse) => (
         <Space>
-          <Tooltip title="View">
+          <Tooltip title={t('common.view')}>
             <Button
               type="text"
               icon={<EyeOutlined />}
               onClick={() => handleViewRun(record.id)}
             />
           </Tooltip>
-          <Tooltip title="Export">
+          <Tooltip title={t('common.export')}>
             <Button
               type="text"
               icon={<DownloadOutlined />}
@@ -760,9 +786,9 @@ export default function RunsPage() {
             />
           </Tooltip>
           <Popconfirm
-            title="Delete this run?"
+            title={t('pages.runs.deleteRunConfirm')}
             onConfirm={() => handleDeleteRun(record.id)}
-            okText="Delete"
+            okText={t('common.delete')}
             okType="danger"
           >
             <Button type="text" danger icon={<DeleteOutlined />} />
@@ -775,7 +801,7 @@ export default function RunsPage() {
   // ──── Batches columns ────
   const batchColumns = [
     {
-      title: 'S.No',
+      title: t('common.sno'),
       key: 'sno',
       width: 60,
       render: (_: unknown, __: BatchRunResponse, index: number) => (
@@ -783,35 +809,35 @@ export default function RunsPage() {
       ),
     },
     {
-      title: 'Scope',
+      title: t('pages.runs.columnScope'),
       key: 'scope',
       render: (_: unknown, record: BatchRunResponse) => (
         <Space size={6} wrap>
-          <Tag>{record.scopeType}</Tag>
+          <Tag>{translateScope(record.scopeType, t)}</Tag>
           <strong>{record.scopeName}</strong>
         </Space>
       ),
     },
     {
-      title: 'Trigger',
+      title: t('pages.runs.columnTrigger'),
       dataIndex: 'triggerType',
       key: 'triggerType',
       width: 100,
       render: (trigger: BatchRunResponse['triggerType']) => (
-        <Tag color={TRIGGER_TAG_COLOR[trigger] ?? 'default'}>{trigger}</Tag>
+        <Tag color={TRIGGER_TAG_COLOR[trigger] ?? 'default'}>{translateTrigger(trigger, t)}</Tag>
       ),
     },
     {
-      title: 'Status',
+      title: t('pages.runs.columnStatus'),
       dataIndex: 'status',
       key: 'status',
       width: 140,
       render: (status: BatchRunResponse['status']) => (
-        <Tag color={STATUS_TAG_COLOR[status] ?? 'default'}>{status.replace('_', ' ')}</Tag>
+        <Tag color={STATUS_TAG_COLOR[status] ?? 'default'}>{translateStatus(status, t)}</Tag>
       ),
     },
     {
-      title: 'Suites',
+      title: t('pages.runs.columnSuites'),
       key: 'suites',
       width: 120,
       render: (_: unknown, record: BatchRunResponse) => (
@@ -825,7 +851,7 @@ export default function RunsPage() {
       ),
     },
     {
-      title: 'Started At',
+      title: t('pages.runs.columnStartedAt'),
       dataIndex: 'startedAt',
       key: 'startedAt',
       width: 170,
@@ -833,15 +859,15 @@ export default function RunsPage() {
       sortOrder: batchSortBy === 'startedAt'
         ? (batchSortDir === 'asc' ? ('ascend' as const) : ('descend' as const))
         : null,
-      render: (v: string | null) => (v ? new Date(v).toLocaleString() : '\u2014'),
+      render: (v: string | null) => formatDateTime(v),
     },
     {
-      title: 'Actions',
+      title: t('common.actions'),
       key: 'actions',
       width: 100,
       render: (_: unknown, record: BatchRunResponse) => (
         <Space>
-          <Tooltip title="View">
+          <Tooltip title={t('common.view')}>
             <Button
               type="text"
               icon={<EyeOutlined />}
@@ -851,7 +877,7 @@ export default function RunsPage() {
               }}
             />
           </Tooltip>
-          <Tooltip title="Export">
+          <Tooltip title={t('common.export')}>
             <Button
               type="text"
               icon={<DownloadOutlined />}
@@ -869,7 +895,7 @@ export default function RunsPage() {
   // ──── Schedules columns ────
   const scheduleColumns = [
     {
-      title: 'S.No',
+      title: t('common.sno'),
       key: 'sno',
       width: 60,
       render: (_: unknown, __: RunScheduleResponse, index: number) => (
@@ -877,28 +903,28 @@ export default function RunsPage() {
       ),
     },
     {
-      title: 'Target',
+      title: t('pages.runs.columnTarget'),
       key: 'target',
       render: (_: unknown, record: RunScheduleResponse) => (
         <Space size={6} wrap>
-          <Tag>{record.scopeType ?? 'SUITE'}</Tag>
+          <Tag>{translateScope(record.scopeType ?? 'SUITE', t)}</Tag>
           <strong>{record.scopeName ?? record.suiteName ?? '—'}</strong>
           {typeof record.suiteCount === 'number' && (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {record.suiteCount} suite{record.suiteCount === 1 ? '' : 's'}
+              {t('pages.runs.suitesCount', { count: record.suiteCount })}
             </Text>
           )}
-          {record.notifyEnabled && <Tag color="cyan">Notify</Tag>}
+          {record.notifyEnabled && <Tag color="cyan">{t('pages.runs.notifyTag')}</Tag>}
         </Space>
       ),
     },
     {
-      title: 'Environment',
+      title: t('pages.runs.columnEnvironment'),
       dataIndex: 'environmentName',
       key: 'environmentName',
     },
     {
-      title: 'Cron',
+      title: t('pages.runs.columnCron'),
       dataIndex: 'cronExpression',
       key: 'cronExpression',
       width: 160,
@@ -909,28 +935,28 @@ export default function RunsPage() {
       ),
     },
     {
-      title: 'Description',
+      title: t('pages.runs.columnDescription'),
       dataIndex: 'description',
       key: 'description',
       ellipsis: true,
       render: (text: string | null) => text || '\u2014',
     },
     {
-      title: 'Next Run',
+      title: t('pages.runs.columnNextRun'),
       dataIndex: 'nextRunAt',
       key: 'nextRunAt',
       width: 170,
-      render: (v: string | null) => (v ? new Date(v).toLocaleString() : '\u2014'),
+      render: (v: string | null) => formatDateTime(v),
     },
     {
-      title: 'Last Run',
+      title: t('pages.runs.columnLastRun'),
       dataIndex: 'lastRunAt',
       key: 'lastRunAt',
       width: 170,
-      render: (v: string | null) => (v ? new Date(v).toLocaleString() : 'Never'),
+      render: (v: string | null) => formatDateTime(v, t('common.never')),
     },
     {
-      title: 'Active',
+      title: t('pages.runs.columnActive'),
       key: 'active',
       width: 70,
       render: (_: unknown, record: RunScheduleResponse) => (
@@ -942,12 +968,12 @@ export default function RunsPage() {
       ),
     },
     {
-      title: 'Actions',
+      title: t('common.actions'),
       key: 'actions',
       width: 140,
       render: (_: unknown, record: RunScheduleResponse) => (
         <Space>
-          <Tooltip title="Run now">
+          <Tooltip title={t('pages.runs.runNow')}>
             <Button
               type="text"
               icon={<PlayCircleOutlined />}
@@ -955,7 +981,7 @@ export default function RunsPage() {
               onClick={() => handleRunNow(record.id)}
             />
           </Tooltip>
-          <Tooltip title="Edit">
+          <Tooltip title={t('common.edit')}>
             <Button
               type="text"
               icon={<EditOutlined />}
@@ -963,9 +989,9 @@ export default function RunsPage() {
             />
           </Tooltip>
           <Popconfirm
-            title="Delete this schedule?"
+            title={t('pages.runs.deleteScheduleConfirm')}
             onConfirm={() => handleDeleteSchedule(record.id)}
-            okText="Delete"
+            okText={t('common.delete')}
             okType="danger"
           >
             <Button type="text" danger icon={<DeleteOutlined />} />
@@ -980,10 +1006,10 @@ export default function RunsPage() {
     <div>
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="page-header-kicker">Execution</div>
-          <h1 className="page-header-title">Runs</h1>
+          <div className="page-header-kicker">{t('pages.runs.kicker')}</div>
+          <h1 className="page-header-title">{t('pages.runs.title')}</h1>
           <p className="page-header-desc">
-            Suite run history, collection/project batches, schedules, and notify delivery logs.
+            {t('pages.runs.description')}
           </p>
         </div>
       </div>
@@ -993,21 +1019,21 @@ export default function RunsPage() {
         items={[
           {
             key: 'history',
-            label: 'Run History',
+            label: t('pages.runs.tabRunHistory'),
             children: (
               <div>
                 {/* Additional filters row */}
                 <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <Select
-                    placeholder="Trigger type"
+                    placeholder={t('pages.runs.filterTriggerType')}
                     value={triggerFilter}
                     onChange={(val) => { setTriggerFilter(val || undefined); setCurrentPage(1) }}
                     allowClear
                     style={{ width: 150 }}
                     size="small"
                     options={[
-                      { value: 'MANUAL', label: 'Manual' },
-                      { value: 'SCHEDULED', label: 'Scheduled' },
+                      { value: 'MANUAL', label: t('pages.runs.triggerManual') },
+                      { value: 'SCHEDULED', label: t('pages.runs.triggerScheduled') },
                     ]}
                   />
                   <RangePicker
@@ -1021,7 +1047,7 @@ export default function RunsPage() {
                 {/* Active filter tags */}
                 {hasAnyFilter && (
                   <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ color: '#888', fontSize: 13 }}>Filters:</span>
+                    <span style={{ color: '#888', fontSize: 13 }}>{t('common.filters')}</span>
                     {activeFilterEntries.map(([key, value]) => (
                       <Tag
                         key={key}
@@ -1030,7 +1056,7 @@ export default function RunsPage() {
                         color="blue"
                         style={{ fontSize: 13 }}
                       >
-                        {COLUMN_LABELS[key] ?? key}: {value}
+                        {columnLabel(key, t)}: {value}
                       </Tag>
                     ))}
                     {triggerFilter && (
@@ -1040,7 +1066,7 @@ export default function RunsPage() {
                         color="blue"
                         style={{ fontSize: 13 }}
                       >
-                        Trigger: {triggerFilter}
+                        {t('pages.runs.filterTrigger', { value: translateTrigger(triggerFilter, t) })}
                       </Tag>
                     )}
                     {dateRange && dateRange[0] && dateRange[1] && (
@@ -1050,7 +1076,10 @@ export default function RunsPage() {
                         color="blue"
                         style={{ fontSize: 13 }}
                       >
-                        Date: {dateRange[0].format('YYYY-MM-DD')} to {dateRange[1].format('YYYY-MM-DD')}
+                        {t('pages.runs.filterDate', {
+                          from: dateRange[0].format('YYYY-MM-DD'),
+                          to: dateRange[1].format('YYYY-MM-DD'),
+                        })}
                       </Tag>
                     )}
                     {(activeFilterEntries.length + (triggerFilter ? 1 : 0) + (dateRange && dateRange[0] ? 1 : 0)) > 1 && (
@@ -1061,7 +1090,7 @@ export default function RunsPage() {
                         onClick={handleClearAllFilters}
                         style={{ fontSize: 12, padding: 0 }}
                       >
-                        Clear all
+                        {t('common.clearAll')}
                       </Button>
                     )}
                   </div>
@@ -1079,7 +1108,7 @@ export default function RunsPage() {
                     total: data.totalElements,
                     showSizeChanger: true,
                     pageSizeOptions: ['10', '20', '50'],
-                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
+                    showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
                     style: { padding: '0 16px' },
                   }}
                   onChange={(pagination, _filters, sorter) => {
@@ -1101,35 +1130,35 @@ export default function RunsPage() {
           },
           {
             key: 'batches',
-            label: 'Batches',
+            label: t('pages.runs.tabBatches'),
             children: (
               <div>
                 <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <Select
-                    placeholder="Trigger type"
+                    placeholder={t('pages.runs.filterTriggerType')}
                     value={batchTriggerFilter}
                     onChange={(val) => { setBatchTriggerFilter(val || undefined); setBatchPage(1) }}
                     allowClear
                     style={{ width: 150 }}
                     size="small"
                     options={[
-                      { value: 'MANUAL', label: 'Manual' },
-                      { value: 'SCHEDULED', label: 'Scheduled' },
+                      { value: 'MANUAL', label: t('pages.runs.triggerManual') },
+                      { value: 'SCHEDULED', label: t('pages.runs.triggerScheduled') },
                     ]}
                   />
                   <Select
-                    placeholder="Status"
+                    placeholder={t('pages.runs.filterStatus')}
                     value={batchStatusFilter}
                     onChange={(val) => { setBatchStatusFilter(val || undefined); setBatchPage(1) }}
                     allowClear
                     style={{ width: 160 }}
                     size="small"
                     options={[
-                      { value: 'RUNNING', label: 'Running' },
-                      { value: 'SUCCESS', label: 'Success' },
-                      { value: 'PARTIAL_FAILURE', label: 'Partial Failure' },
-                      { value: 'FAILURE', label: 'Failure' },
-                      { value: 'CANCELLED', label: 'Cancelled' },
+                      { value: 'RUNNING', label: t('pages.runs.statusRunning') },
+                      { value: 'SUCCESS', label: t('pages.runs.statusSuccess') },
+                      { value: 'PARTIAL_FAILURE', label: t('pages.runs.statusPartialFailure') },
+                      { value: 'FAILURE', label: t('pages.runs.statusFailure') },
+                      { value: 'CANCELLED', label: t('pages.runs.statusCancelled') },
                     ]}
                   />
                   <RangePicker
@@ -1156,7 +1185,7 @@ export default function RunsPage() {
                     total: batchData.totalElements,
                     showSizeChanger: true,
                     pageSizeOptions: ['10', '20', '50'],
-                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
+                    showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
                     style: { padding: '0 16px' },
                   }}
                   onChange={(pagination, _filters, sorter) => {
@@ -1178,7 +1207,7 @@ export default function RunsPage() {
           },
           {
             key: 'schedules',
-            label: 'Schedules',
+            label: t('pages.runs.tabSchedules'),
             children: (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
@@ -1187,7 +1216,7 @@ export default function RunsPage() {
                     icon={<PlusOutlined />}
                     onClick={() => openScheduleModal()}
                   >
-                    Create Schedule
+                    {t('pages.runs.createSchedule')}
                   </Button>
                 </div>
 
@@ -1203,7 +1232,7 @@ export default function RunsPage() {
                     total: scheduleData.totalElements,
                     showSizeChanger: true,
                     pageSizeOptions: ['10', '20', '50'],
-                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
+                    showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
                     style: { padding: '0 16px' },
                   }}
                   onChange={(pagination) => {
@@ -1216,13 +1245,13 @@ export default function RunsPage() {
           },
           {
             key: 'notifications',
-            label: 'Notifications',
+            label: t('pages.runs.tabNotifications'),
             children: (
               <div>
                 <div style={{ marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <Select
                     allowClear
-                    placeholder="Filter by result"
+                    placeholder={t('pages.runs.filterByResult')}
                     style={{ width: 160 }}
                     value={notifyLogSuccessFilter}
                     onChange={(v) => {
@@ -1230,14 +1259,14 @@ export default function RunsPage() {
                       setNotifyLogPage(1)
                     }}
                     options={[
-                      { value: true, label: 'Success' },
-                      { value: false, label: 'Failed' },
+                      { value: true, label: t('pages.runs.statusSuccess') },
+                      { value: false, label: t('pages.runs.statusFailure') },
                     ]}
                   />
                   <Select
                     allowClear
                     showSearch
-                    placeholder="Filter by schedule"
+                    placeholder={t('pages.runs.filterBySchedule')}
                     style={{ width: 260 }}
                     value={notifyLogScheduleFilter}
                     onChange={(v) => {
@@ -1250,7 +1279,7 @@ export default function RunsPage() {
                       label: `${s.scopeName ?? s.suiteName ?? s.id} (${s.scopeType})`,
                     }))}
                   />
-                  <Button onClick={() => setNotifyLogRefreshKey((k) => k + 1)}>Refresh</Button>
+                  <Button onClick={() => setNotifyLogRefreshKey((k) => k + 1)}>{t('common.refresh')}</Button>
                 </div>
                 <Table
                   rowKey="id"
@@ -1263,47 +1292,49 @@ export default function RunsPage() {
                   })}
                   columns={[
                     {
-                      title: 'Time',
+                      title: t('pages.runs.columnTime'),
                       dataIndex: 'createdAt',
                       width: 180,
-                      render: (v: string) => new Date(v).toLocaleString(),
+                      render: (v: string) => formatDateTime(v),
                     },
                     {
-                      title: 'Result',
+                      title: t('pages.runs.columnResult'),
                       dataIndex: 'success',
                       width: 100,
                       render: (ok: boolean) => (
-                        <Tag color={ok ? 'success' : 'error'}>{ok ? 'SUCCESS' : 'FAILED'}</Tag>
+                        <Tag color={ok ? 'success' : 'error'}>
+                          {ok ? t('pages.runs.notifyResultSuccess') : t('pages.runs.notifyResultFailed')}
+                        </Tag>
                       ),
                     },
                     {
-                      title: 'HTTP',
+                      title: t('pages.runs.columnHttp'),
                       dataIndex: 'httpStatus',
                       width: 80,
                       render: (v: number | null) => v ?? '—',
                     },
                     {
-                      title: 'Run status',
+                      title: t('pages.runs.columnRunStatus'),
                       dataIndex: 'runStatus',
                       width: 140,
                       render: (v: string | null) => v ?? '—',
                     },
                     {
-                      title: 'Event',
+                      title: t('pages.runs.columnEvent'),
                       dataIndex: 'eventName',
                       ellipsis: true,
                       render: (v: string | null) => v ?? '—',
                     },
                     {
-                      title: 'URL',
+                      title: t('pages.runs.columnUrl'),
                       dataIndex: 'notifyUrl',
                       ellipsis: true,
                     },
                     {
-                      title: 'Duration',
+                      title: t('pages.runs.columnDuration'),
                       dataIndex: 'durationMs',
                       width: 100,
-                      render: (v: number) => `${v} ms`,
+                      render: (v: number) => t('pages.runs.durationMs', { value: v }),
                     },
                   ]}
                   pagination={{
@@ -1312,7 +1343,7 @@ export default function RunsPage() {
                     total: notifyLogData.totalElements,
                     showSizeChanger: true,
                     pageSizeOptions: ['10', '20', '50'],
-                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
+                    showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
                     style: { padding: '0 16px' },
                   }}
                   onChange={(pagination) => {
@@ -1327,7 +1358,7 @@ export default function RunsPage() {
       />
 
       <Drawer
-        title="Notify delivery"
+        title={t('pages.runs.notifyDeliveryTitle')}
         open={!!notifyLogDrawer}
         onClose={() => setNotifyLogDrawer(null)}
         width={720}
@@ -1337,32 +1368,32 @@ export default function RunsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div>
               <Tag color={notifyLogDrawer.success ? 'success' : 'error'}>
-                {notifyLogDrawer.success ? 'SUCCESS' : 'FAILED'}
+                {notifyLogDrawer.success ? t('pages.runs.notifyResultSuccess') : t('pages.runs.notifyResultFailed')}
               </Tag>
               {notifyLogDrawer.httpStatus != null && <Tag>HTTP {notifyLogDrawer.httpStatus}</Tag>}
               {notifyLogDrawer.runStatus && <Tag>{notifyLogDrawer.runStatus}</Tag>}
             </div>
-            <div><Text type="secondary">Time</Text><div>{new Date(notifyLogDrawer.createdAt).toLocaleString()}</div></div>
-            <div><Text type="secondary">URL</Text><div style={{ wordBreak: 'break-all' }}>{notifyLogDrawer.notifyUrl}</div></div>
-            <div><Text type="secondary">Event</Text><div>{notifyLogDrawer.eventName ?? '—'} / {notifyLogDrawer.eventId ?? '—'}</div></div>
-            <div><Text type="secondary">Business ID</Text><div>{notifyLogDrawer.businessId ?? '—'}</div></div>
-            <div><Text type="secondary">Duration</Text><div>{notifyLogDrawer.durationMs} ms</div></div>
+            <div><Text type="secondary">{t('pages.runs.columnTime')}</Text><div>{formatDateTime(notifyLogDrawer.createdAt)}</div></div>
+            <div><Text type="secondary">{t('pages.runs.columnUrl')}</Text><div style={{ wordBreak: 'break-all' }}>{notifyLogDrawer.notifyUrl}</div></div>
+            <div><Text type="secondary">{t('pages.runs.columnEvent')}</Text><div>{notifyLogDrawer.eventName ?? '—'} / {notifyLogDrawer.eventId ?? '—'}</div></div>
+            <div><Text type="secondary">{t('pages.runs.businessId')}</Text><div>{notifyLogDrawer.businessId ?? '—'}</div></div>
+            <div><Text type="secondary">{t('pages.runs.columnDuration')}</Text><div>{t('pages.runs.durationMs', { value: notifyLogDrawer.durationMs })}</div></div>
             {notifyLogDrawer.errorMessage && (
               <div>
-                <Text type="secondary">Error</Text>
+                <Text type="secondary">{t('pages.runs.error')}</Text>
                 <pre style={{ margin: 0, whiteSpace: 'pre-wrap', background: '#fff1f0', padding: 8, borderRadius: 6 }}>
                   {notifyLogDrawer.errorMessage}
                 </pre>
               </div>
             )}
             <div>
-              <Text type="secondary">Request body</Text>
+              <Text type="secondary">{t('pages.runs.requestBody')}</Text>
               <pre style={{ margin: 0, whiteSpace: 'pre-wrap', background: '#f8fafc', padding: 8, borderRadius: 6, maxHeight: 280, overflow: 'auto' }}>
                 {notifyLogDrawer.requestBody ?? '—'}
               </pre>
             </div>
             <div>
-              <Text type="secondary">Response body</Text>
+              <Text type="secondary">{t('pages.runs.responseBody')}</Text>
               <pre style={{ margin: 0, whiteSpace: 'pre-wrap', background: '#f8fafc', padding: 8, borderRadius: 6, maxHeight: 280, overflow: 'auto' }}>
                 {notifyLogDrawer.responseBody ?? '—'}
               </pre>
@@ -1373,7 +1404,7 @@ export default function RunsPage() {
 
       {/* View Run Drawer */}
       <Drawer
-        title="Run Details"
+        title={t('pages.runs.runDetailsTitle')}
         open={!!viewDrawer}
         onClose={() => { setViewDrawer(null); setViewDetail(null) }}
         width={800}
@@ -1392,18 +1423,18 @@ export default function RunsPage() {
           />
         ) : (
           <div style={{ color: '#888', textAlign: 'center', padding: 40 }}>
-            No result data available for this run.
+            {t('pages.runs.noResultData')}
           </div>
         )}
       </Drawer>
 
       {/* Schedule Modal */}
       <Modal
-        title={editingSchedule ? 'Edit Schedule' : 'Create Schedule'}
+        title={editingSchedule ? t('pages.runs.editSchedule') : t('pages.runs.createSchedule')}
         open={scheduleModalOpen}
         onOk={handleScheduleSubmit}
         onCancel={() => { setScheduleModalOpen(false); setEditingSchedule(null) }}
-        okText={editingSchedule ? 'Update' : 'Create'}
+        okText={editingSchedule ? t('common.update') : t('common.create')}
         confirmLoading={scheduleSubmitting}
         destroyOnClose
         width={640}
@@ -1417,16 +1448,16 @@ export default function RunsPage() {
         >
           <Form.Item
             name="scopeType"
-            label="Scope"
-            rules={[{ required: true, message: 'Please select a scope' }]}
-            extra="Collection and project schedules run every suite under the target, one after another."
+            label={t('pages.runs.scope')}
+            rules={[{ required: true, message: t('pages.runs.pleaseSelectScope') }]}
+            extra={t('pages.runs.scopeExtra')}
           >
             <Segmented
               block
               options={[
-                { label: 'Suite', value: 'SUITE' },
-                { label: 'Collection', value: 'COLLECTION' },
-                { label: 'Project', value: 'PROJECT' },
+                { label: t('pages.runs.scopeSUITE'), value: 'SUITE' },
+                { label: t('pages.runs.scopeCOLLECTION'), value: 'COLLECTION' },
+                { label: t('pages.runs.scopePROJECT'), value: 'PROJECT' },
               ]}
               onChange={() => {
                 scheduleForm.setFieldsValue({ scopeId: undefined })
@@ -1438,20 +1469,20 @@ export default function RunsPage() {
             name="scopeId"
             label={
               scheduleScopeType === 'PROJECT'
-                ? 'Project'
+                ? t('pages.runs.scopePROJECT')
                 : scheduleScopeType === 'COLLECTION'
-                  ? 'Collection'
-                  : 'Suite'
+                  ? t('pages.runs.scopeCOLLECTION')
+                  : t('pages.runs.scopeSUITE')
             }
-            rules={[{ required: true, message: 'Please select a target' }]}
+            rules={[{ required: true, message: t('pages.runs.pleaseSelectTarget') }]}
           >
             <Select
               placeholder={
                 scheduleScopeType === 'PROJECT'
-                  ? 'Select project'
+                  ? t('pages.runs.selectProject')
                   : scheduleScopeType === 'COLLECTION'
-                    ? 'Select collection'
-                    : 'Select test suite'
+                    ? t('pages.runs.selectCollection')
+                    : t('pages.runs.selectTestSuite')
               }
               showSearch
               filterOption={(input, option) =>
@@ -1469,11 +1500,11 @@ export default function RunsPage() {
 
           <Form.Item
             name="environmentId"
-            label="Environment"
-            rules={[{ required: true, message: 'Please select an environment' }]}
+            label={t('pages.runs.columnEnvironment')}
+            rules={[{ required: true, message: t('pages.runs.pleaseSelectEnvironment') }]}
           >
             <Select
-              placeholder="Select environment"
+              placeholder={t('pages.runs.selectEnvironment')}
               showSearch
               filterOption={(input, option) =>
                 (option?.label as string ?? '').toLowerCase().includes(input.toLowerCase())
@@ -1484,16 +1515,16 @@ export default function RunsPage() {
 
           <Form.Item
             name="cronExpression"
-            label="Cron Expression"
-            rules={[{ required: true, message: 'Please enter a cron expression' }]}
+            label={t('pages.runs.cronExpression')}
+            rules={[{ required: true, message: t('pages.runs.pleaseEnterCron') }]}
             extra={
               <Text type="secondary" style={{ fontSize: 11 }}>
-                5-field (min hr day mon dow) or 6-field (sec min hr day mon dow). Examples: */5 * * * * (every 5min) | 0 8 * * * (daily 8am) | 30 9 * * MON-FRI (weekdays 9:30am)
+                {t('pages.runs.cronHelp')}
               </Text>
             }
           >
             <Input
-              placeholder="e.g. */5 * * * * or 0 0 8 * * *"
+              placeholder={t('pages.runs.cronPlaceholder')}
               value={cronValue}
               onChange={(e) => handleCronChange(e.target.value)}
             />
@@ -1514,15 +1545,15 @@ export default function RunsPage() {
               {/* Server-side preview: next 5 fire times */}
               {cronPreviewLoading && (
                 <div style={{ marginTop: 4 }}>
-                  <Spin size="small" /> <Text type="secondary" style={{ fontSize: 11 }}>Loading preview...</Text>
+                  <Spin size="small" /> <Text type="secondary" style={{ fontSize: 11 }}>{t('pages.runs.loadingPreview')}</Text>
                 </div>
               )}
               {!cronPreviewLoading && cronPreview && cronPreview.valid && cronPreview.nextFireTimes.length > 0 && (
                 <div style={{ marginTop: 4 }}>
-                  <Text type="secondary" style={{ fontSize: 11 }}>Next fire times:</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>{t('pages.runs.nextFireTimes')}</Text>
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 11, color: '#595959' }}>
-                    {cronPreview.nextFireTimes.map((t, i) => (
-                      <li key={i}>{new Date(t).toLocaleString()}</li>
+                    {cronPreview.nextFireTimes.map((fireTime, i) => (
+                      <li key={i}>{formatDateTime(fireTime)}</li>
                     ))}
                   </ul>
                 </div>
@@ -1537,16 +1568,16 @@ export default function RunsPage() {
 
           <Form.Item
             name="description"
-            label="Description"
+            label={t('common.description')}
           >
-            <Input placeholder="Optional description" />
+            <Input placeholder={t('pages.runs.optionalDescription')} />
           </Form.Item>
 
           <Form.Item
             name="notifyEnabled"
-            label="Notify external engine"
+            label={t('pages.runs.notifyExternalEngine')}
             valuePropName="checked"
-            extra="POST a fixed event envelope to your notification rules engine after each scheduled run."
+            extra={t('pages.runs.notifyExternalEngineExtra')}
           >
             <Switch />
           </Form.Item>
@@ -1555,54 +1586,54 @@ export default function RunsPage() {
             <>
               <Form.Item
                 name="notifyUrl"
-                label="Notify URL"
-                rules={[{ required: true, message: 'Notify URL is required when enabled' }]}
+                label={t('pages.runs.notifyUrl')}
+                rules={[{ required: true, message: t('pages.runs.notifyUrlRequired') }]}
               >
                 <Input placeholder="https://notify-engine.example/api/events" />
               </Form.Item>
               <Form.Item
                 name="notifyOn"
-                label="Notify when"
+                label={t('pages.runs.notifyWhen')}
                 rules={[{ required: true }]}
               >
                 <Segmented
                   options={[
-                    { label: 'On failure', value: 'ON_FAILURE' },
-                    { label: 'Always', value: 'ALWAYS' },
+                    { label: t('pages.runs.notifyOnFailure'), value: 'ON_FAILURE' },
+                    { label: t('pages.runs.notifyAlways'), value: 'ALWAYS' },
                   ]}
                 />
               </Form.Item>
               <div className="form-grid-2">
                 <Form.Item
                   name="notifyEventName"
-                  label="Event name"
-                  extra="Default: orchestapi.schedule.run"
+                  label={t('pages.runs.eventName')}
+                  extra={t('pages.runs.eventNameExtra')}
                 >
                   <Input placeholder="orchestapi.schedule.run" />
                 </Form.Item>
                 <Form.Item
                   name="notifyBusinessId"
-                  label="Business ID"
-                  extra="Default: schedule id"
+                  label={t('pages.runs.businessId')}
+                  extra={t('pages.runs.businessIdExtra')}
                 >
-                  <Input placeholder="Optional override" />
+                  <Input placeholder={t('pages.runs.optionalOverride')} />
                 </Form.Item>
                 <Form.Item
                   name="notifyOperator"
-                  label="Operator"
-                  extra="Default: orchestapi"
+                  label={t('pages.runs.operator')}
+                  extra={t('pages.runs.operatorExtra')}
                 >
                   <Input placeholder="orchestapi" />
                 </Form.Item>
               </div>
               <Form.Item
                 name="notifyExtraLabelsText"
-                label="Extra labels (JSON object)"
-                extra='Merged into label without overriding system keys. Example: {"team":"platform","severity":"agent"}'
+                label={t('pages.runs.extraLabels')}
+                extra={t('pages.runs.extraLabelsExtra')}
               >
                 <Input.TextArea
                   rows={4}
-                  placeholder='{"team":"platform"}'
+                  placeholder={t('pages.runs.extraLabelsPlaceholder')}
                   style={{ fontFamily: 'var(--font-code)', fontSize: 12 }}
                 />
               </Form.Item>

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { message } from 'antd'
+import i18n from '../i18n'
 import { collectionApi, projectApi } from '../services/projectApi'
 import type { ApiCollection, Project } from '../types/project'
 import { DEFAULT_COLLECTION_ID, DEFAULT_PROJECT_ID } from '../types/project'
@@ -106,7 +107,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       try {
         await refreshProjects()
       } catch {
-        if (!cancelled) message.error('Failed to load projects')
+        if (!cancelled) message.error(i18n.t('context.project.loadProjectsError'))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -122,7 +123,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       try {
         await refreshCollections()
       } catch {
-        if (!cancelled) message.error('Failed to load collections')
+        if (!cancelled) message.error(i18n.t('context.project.loadCollectionsError'))
       }
     })()
     return () => {

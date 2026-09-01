@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Badge, Button, Card, Collapse, Descriptions, Spin, Tabs, Tag, Typography, message } from 'antd'
 import { CheckCircleOutlined, CloseCircleOutlined, CloseOutlined, CopyOutlined, LoadingOutlined, WarningOutlined } from '@ant-design/icons'
 import type { SuiteExecutionResult, StepExecutionResult, VerificationResultDto, ResponseValidationResultDto } from '../services/testSuiteApi'
@@ -85,6 +86,7 @@ function isJson(text: string): boolean {
 }
 
 function CopyBtn({ text, label }: { text: string; label?: string }) {
+  const { t } = useTranslation()
   return (
     <Button
       type="text"
@@ -93,11 +95,11 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
       onClick={(e) => {
         e.stopPropagation()
         navigator.clipboard.writeText(text)
-        message.success(`${label || 'Text'} copied`)
+        message.success(t('components.runResults.copied', { label: label || t('components.runResults.text') }))
       }}
       style={{ fontSize: 11, height: 20, padding: '0 4px' }}
     >
-      Copy
+      {t('components.runResults.copy')}
     </Button>
   )
 }
@@ -138,6 +140,7 @@ const darkCodeBlockStyle: React.CSSProperties = {
 /* ─── Verification Card ─── */
 
 function VerificationCard({ v }: { v: VerificationResultDto }) {
+  const { t } = useTranslation()
   const isPassed = v.status === 'PASS'
   const statusColor = isPassed ? '#389e0d' : '#cf1322'
   const statusBorder = isPassed ? '#b7eb8f' : '#ffa39e'
@@ -161,8 +164,8 @@ function VerificationCard({ v }: { v: VerificationResultDto }) {
       {/* Query */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-          <Text style={{ fontSize: 10, fontWeight: 600, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Query</Text>
-          <CopyBtn text={v.query} label="Query" />
+          <Text style={{ fontSize: 10, fontWeight: 600, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.runResults.query')}</Text>
+          <CopyBtn text={v.query} label={t('components.runResults.query')} />
         </div>
         <pre style={{ margin: 0, padding: 6, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 3, fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
           {v.query}
@@ -177,7 +180,7 @@ function VerificationCard({ v }: { v: VerificationResultDto }) {
       {/* Assertions */}
       {v.assertions && v.assertions.length > 0 && (
         <div>
-          <Text style={{ fontSize: 10, fontWeight: 600, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Assertions</Text>
+          <Text style={{ fontSize: 10, fontWeight: 600, color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.runResults.assertions')}</Text>
           <div style={{ marginTop: 4, background: '#fafafa', borderRadius: 4, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
             {v.assertions.map((a, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11, padding: '4px 8px', borderBottom: i < v.assertions.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
@@ -188,7 +191,7 @@ function VerificationCard({ v }: { v: VerificationResultDto }) {
                 <Text type="secondary" style={{ fontSize: 10 }}>{a.operator}</Text>
                 <code style={{ fontSize: 11, background: 'rgba(0,0,0,0.04)', padding: '1px 4px', borderRadius: 2 }}>{a.expected}</code>
                 {!a.passed && (
-                  <Text type="danger" style={{ fontSize: 10 }}>got: {a.actual}</Text>
+                  <Text type="danger" style={{ fontSize: 10 }}>{t('components.runResults.got', { actual: a.actual })}</Text>
                 )}
               </div>
             ))}
@@ -199,8 +202,8 @@ function VerificationCard({ v }: { v: VerificationResultDto }) {
       {/* Raw Result */}
       {v.rawResult && (
         <details style={{ fontSize: 11 }}>
-          <summary style={{ cursor: 'pointer', color: '#8c8c8c', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Raw Result</summary>
-          <CopyBtn text={v.rawResult} label="Raw result" />
+          <summary style={{ cursor: 'pointer', color: '#8c8c8c', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.runResults.rawResult')}</summary>
+          <CopyBtn text={v.rawResult} label={t('components.runResults.rawResult')} />
           <pre style={{ marginTop: 4, padding: 6, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 3, fontFamily: 'monospace', fontSize: 11, maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
             {v.rawResult}
           </pre>
@@ -211,12 +214,13 @@ function VerificationCard({ v }: { v: VerificationResultDto }) {
 }
 
 function ResponseValidationCard({ rv }: { rv: ResponseValidationResultDto }) {
+  const { t } = useTranslation()
   const passed = rv.passed
   const typeConfig: Record<string, { label: string; color: string; icon: string }> = {
-    HEADER: { label: 'Header', color: '#0958d9', icon: 'H' },
-    BODY_EXACT_MATCH: { label: 'Body Match', color: '#531dab', icon: 'B' },
-    BODY_FIELD: { label: 'Field', color: '#006d75', icon: 'F' },
-    BODY_DATA_TYPE: { label: 'Type', color: '#ad4e00', icon: 'T' },
+    HEADER: { label: t('components.runResults.validationHeader'), color: '#0958d9', icon: 'H' },
+    BODY_EXACT_MATCH: { label: t('components.runResults.validationBodyMatch'), color: '#531dab', icon: 'B' },
+    BODY_FIELD: { label: t('components.runResults.validationField'), color: '#006d75', icon: 'F' },
+    BODY_DATA_TYPE: { label: t('components.runResults.validationType'), color: '#ad4e00', icon: 'T' },
   }
   const cfg = typeConfig[rv.validationType] || typeConfig.HEADER
   const statusColor = passed ? '#389e0d' : '#cf1322'
@@ -226,7 +230,14 @@ function ResponseValidationCard({ rv }: { rv: ResponseValidationResultDto }) {
   // Build the description line based on type
   let description = ''
   if (rv.validationType === 'HEADER') description = `${rv.headerName} ${rv.operator}`
-  else if (rv.validationType === 'BODY_EXACT_MATCH') description = `${(rv.matchMode || 'STRICT').charAt(0) + (rv.matchMode || 'STRICT').slice(1).toLowerCase()} match`
+  else if (rv.validationType === 'BODY_EXACT_MATCH') {
+    const mode = rv.matchMode || 'STRICT'
+    description = mode === 'STRICT'
+      ? t('components.runResults.strictMatch')
+      : mode === 'FLEXIBLE'
+        ? t('components.runResults.flexibleMatch')
+        : t('components.runResults.structureMatch')
+  }
   else if (rv.validationType === 'BODY_FIELD') description = `${rv.jsonPath} ${rv.operator}`
   else if (rv.validationType === 'BODY_DATA_TYPE') description = `${rv.jsonPath}`
 
@@ -241,7 +252,7 @@ function ResponseValidationCard({ rv }: { rv: ResponseValidationResultDto }) {
         <Text style={{ fontSize: 11, fontWeight: 500, color: '#262626' }}>{cfg.label}</Text>
         <code style={{ fontSize: 11, color: '#595959', background: 'rgba(0,0,0,0.04)', padding: '1px 6px', borderRadius: 3 }}>{description}</code>
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 10, fontWeight: 600, color: statusColor, background: statusBg, padding: '1px 6px', borderRadius: 3, border: `1px solid ${statusBorder}`, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{passed ? 'Pass' : 'Fail'}</span>
+        <span style={{ fontSize: 10, fontWeight: 600, color: statusColor, background: statusBg, padding: '1px 6px', borderRadius: 3, border: `1px solid ${statusBorder}`, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{passed ? t('components.runResults.pass') : t('components.runResults.fail')}</span>
       </div>
 
       {/* Diff block — only shown on failure */}
@@ -250,26 +261,26 @@ function ResponseValidationCard({ rv }: { rv: ResponseValidationResultDto }) {
           {/* Expected row */}
           <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0' }}>
             <div style={{ width: 64, padding: '5px 8px', background: '#f6ffed', borderRight: '1px solid #f0f0f0', flexShrink: 0 }}>
-              <Text style={{ fontSize: 10, fontWeight: 600, color: '#389e0d', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Expected</Text>
+              <Text style={{ fontSize: 10, fontWeight: 600, color: '#389e0d', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.runResults.expected')}</Text>
             </div>
             <div style={{ flex: 1, padding: '4px 8px', minWidth: 0 }}>
               {rv.validationType === 'BODY_EXACT_MATCH' ? (
-                <pre style={{ fontSize: 11, fontFamily: 'monospace', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflow: 'auto', color: '#262626' }}>{rv.expected || '(empty)'}</pre>
+                <pre style={{ fontSize: 11, fontFamily: 'monospace', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflow: 'auto', color: '#262626' }}>{rv.expected || t('components.runResults.empty')}</pre>
               ) : (
-                <code style={{ fontSize: 11, wordBreak: 'break-all', color: '#262626' }}>{rv.validationType === 'BODY_DATA_TYPE' ? rv.expectedType : (rv.expected || '(empty)')}</code>
+                <code style={{ fontSize: 11, wordBreak: 'break-all', color: '#262626' }}>{rv.validationType === 'BODY_DATA_TYPE' ? rv.expectedType : (rv.expected || t('components.runResults.empty'))}</code>
               )}
             </div>
           </div>
           {/* Actual row */}
           <div style={{ display: 'flex' }}>
             <div style={{ width: 64, padding: '5px 8px', background: '#fff1f0', borderRight: '1px solid #f0f0f0', flexShrink: 0 }}>
-              <Text style={{ fontSize: 10, fontWeight: 600, color: '#cf1322', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Actual</Text>
+              <Text style={{ fontSize: 10, fontWeight: 600, color: '#cf1322', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{t('components.runResults.actual')}</Text>
             </div>
             <div style={{ flex: 1, padding: '4px 8px', minWidth: 0 }}>
               {rv.validationType === 'BODY_EXACT_MATCH' ? (
-                <pre style={{ fontSize: 11, fontFamily: 'monospace', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflow: 'auto', color: '#262626' }}>{rv.actual || '(empty)'}</pre>
+                <pre style={{ fontSize: 11, fontFamily: 'monospace', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflow: 'auto', color: '#262626' }}>{rv.actual || t('components.runResults.empty')}</pre>
               ) : (
-                <code style={{ fontSize: 11, wordBreak: 'break-all', color: '#262626' }}>{rv.validationType === 'BODY_DATA_TYPE' ? (rv.actualType || 'unknown') : (rv.actual || '(missing)')}</code>
+                <code style={{ fontSize: 11, wordBreak: 'break-all', color: '#262626' }}>{rv.validationType === 'BODY_DATA_TYPE' ? (rv.actualType || t('components.runResults.unknown')) : (rv.actual || t('components.runResults.missing'))}</code>
               )}
             </div>
           </div>
@@ -287,6 +298,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
   depResults: StepExecutionResult[]
   allSteps: TestStep[]
 }) {
+  const { t } = useTranslation()
   const hasRequestHeaders = step.requestHeaders && Object.keys(step.requestHeaders).length > 0
   const hasResponseHeaders = step.responseHeaders && Object.keys(step.responseHeaders).length > 0
   const hasQueryParams = step.requestQueryParams && Object.keys(step.requestQueryParams).length > 0
@@ -303,7 +315,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
     key: 'request',
     label: (
       <span>
-        Request
+        {t('components.runResults.tabRequest')}
         {hasRequestBody && <Tag style={{ margin: '0 0 0 6px', fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>{formatSize(step.requestBody)}</Tag>}
         {hasWarnings && <WarningOutlined style={{ color: '#fa8c16', marginLeft: 6, fontSize: 12 }} />}
       </span>
@@ -315,7 +327,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
           <div style={{ background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 4, padding: '8px 12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <WarningOutlined style={{ color: '#fa8c16', fontSize: 13 }} />
-              <Text strong style={{ color: '#ad6800', fontSize: 12 }}>Unresolved Variables ({step.warnings.length})</Text>
+              <Text strong style={{ color: '#ad6800', fontSize: 12 }}>{t('components.runResults.unresolvedVariables', { count: step.warnings.length })}</Text>
             </div>
             {step.warnings.map((w, i) => (
               <div key={i} style={{ fontSize: 11, color: '#ad6800', padding: '2px 0 2px 20px', wordBreak: 'break-word' }}>{w}</div>
@@ -331,10 +343,10 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
               icon={<CopyOutlined />}
               onClick={() => {
                 navigator.clipboard.writeText(buildCurlFromResult(step, method))
-                message.success('cURL copied to clipboard')
+                message.success(t('components.runResults.curlCopied'))
               }}
             >
-              Copy as cURL
+              {t('components.runResults.copyAsCurl')}
             </Button>
           </div>
         )}
@@ -344,8 +356,8 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
               {method && <Tag color={METHOD_COLOR[method]} style={{ margin: 0, fontWeight: 600 }}>{method}</Tag>}
-              <Text type="secondary" style={{ fontSize: 11 }}>URL</Text>
-              <CopyBtn text={step.requestUrl} label="URL" />
+              <Text type="secondary" style={{ fontSize: 11 }}>{t('components.runResults.url')}</Text>
+              <CopyBtn text={step.requestUrl} label={t('components.runResults.url')} />
             </div>
             <pre style={{ ...codeBlockStyle, maxHeight: 80, margin: 0 }}>{step.requestUrl}</pre>
           </div>
@@ -354,10 +366,10 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
         {/* Query Params */}
         {hasQueryParams && (
           <div>
-            <Text type="secondary" style={{ fontSize: 11 }}>Query Parameters</Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>{t('components.runResults.queryParameters')}</Text>
             <CopyBtn
               text={JSON.stringify(step.requestQueryParams, null, 2)}
-              label="Query params"
+              label={t('components.runResults.queryParams')}
             />
             <Descriptions
               size="small"
@@ -376,10 +388,10 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
         {/* Request Headers */}
         {hasRequestHeaders && (
           <div>
-            <Text type="secondary" style={{ fontSize: 11 }}>Headers ({Object.keys(step.requestHeaders).length})</Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>{t('components.runResults.headers', { count: Object.keys(step.requestHeaders).length })}</Text>
             <CopyBtn
               text={JSON.stringify(step.requestHeaders, null, 2)}
-              label="Request headers"
+              label={t('components.runResults.requestHeaders')}
             />
             <Descriptions
               size="small"
@@ -399,8 +411,8 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
         {hasRequestBody && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-              <Text type="secondary" style={{ fontSize: 11 }}>Body</Text>
-              <CopyBtn text={step.requestBody} label="Request body" />
+              <Text type="secondary" style={{ fontSize: 11 }}>{t('components.runResults.body')}</Text>
+              <CopyBtn text={step.requestBody} label={t('components.runResults.requestBody')} />
             </div>
             {isJson(step.requestBody) ? (
               <pre style={{ ...darkCodeBlockStyle, margin: 0 }} dangerouslySetInnerHTML={{ __html: syntaxHighlightJson(step.requestBody) }} />
@@ -411,7 +423,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
         )}
 
         {!step.requestUrl && !hasRequestBody && !hasQueryParams && !hasRequestHeaders && (
-          <Text type="secondary" style={{ fontSize: 12 }}>No request data available</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{t('components.runResults.noRequestData')}</Text>
         )}
       </div>
     ),
@@ -420,9 +432,9 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
   /* ── Response Tab ── */
   tabItems.push({
     key: 'response',
-    label: (
+      label: (
       <span>
-        Response
+        {t('components.runResults.tabResponse')}
         <Tag
           color={step.responseCode >= 200 && step.responseCode < 300 ? 'green' : step.responseCode >= 400 ? 'red' : 'blue'}
           style={{ margin: '0 0 0 6px', fontSize: 10, lineHeight: '16px', padding: '0 4px' }}
@@ -437,7 +449,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
         {/* Error message */}
         {step.errorMessage && (
           <div style={{ background: '#fff2f0', border: '1px solid #ffa39e', borderRadius: 4, padding: 8 }}>
-            <Text strong style={{ color: '#ff4d4f', fontSize: 12 }}>Error: </Text>
+            <Text strong style={{ color: '#ff4d4f', fontSize: 12 }}>{t('components.runResults.error')} </Text>
             <span style={{ color: '#ff4d4f', fontSize: 12 }}>{step.errorMessage}</span>
           </div>
         )}
@@ -445,13 +457,13 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
         {/* Response Body */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-            <Text type="secondary" style={{ fontSize: 11 }}>Body</Text>
-            {step.responseBody && <CopyBtn text={step.responseBody} label="Response body" />}
+            <Text type="secondary" style={{ fontSize: 11 }}>{t('components.runResults.body')}</Text>
+            {step.responseBody && <CopyBtn text={step.responseBody} label={t('components.runResults.responseBody')} />}
           </div>
           {step.responseBody && isJson(step.responseBody) ? (
             <pre style={{ ...darkCodeBlockStyle, margin: 0 }} dangerouslySetInnerHTML={{ __html: syntaxHighlightJson(step.responseBody) }} />
           ) : (
-            <pre style={{ ...codeBlockStyle, margin: 0 }}>{step.responseBody || '(empty)'}</pre>
+            <pre style={{ ...codeBlockStyle, margin: 0 }}>{step.responseBody || t('components.runResults.empty')}</pre>
           )}
         </div>
 
@@ -459,10 +471,10 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
         {hasResponseHeaders && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-              <Text type="secondary" style={{ fontSize: 11 }}>Headers ({Object.keys(step.responseHeaders).length})</Text>
+              <Text type="secondary" style={{ fontSize: 11 }}>{t('components.runResults.headers', { count: Object.keys(step.responseHeaders).length })}</Text>
               <CopyBtn
                 text={JSON.stringify(step.responseHeaders, null, 2)}
-                label="Response headers"
+                label={t('components.runResults.responseHeaders')}
               />
             </div>
             <Descriptions
@@ -488,7 +500,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
       key: 'variables',
       label: (
         <span>
-          Variables
+          {t('components.runResults.tabVariables')}
           <Tag style={{ margin: '0 0 0 6px', fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
             {Object.keys(step.extractedVariables).length}
           </Tag>
@@ -497,10 +509,10 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
       children: (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Text type="secondary" style={{ fontSize: 11 }}>Extracted Variables</Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>{t('components.runResults.extractedVariables')}</Text>
             <CopyBtn
               text={JSON.stringify(step.extractedVariables, null, 2)}
-              label="Variables"
+              label={t('components.runResults.variables')}
             />
           </div>
           <Descriptions
@@ -533,7 +545,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
       key: 'responseValidation',
       label: (
         <span>
-          Response Validation
+          {t('components.runResults.tabResponseValidation')}
           <Tag color={allPassed ? 'green' : 'red'} style={{ margin: '0 0 0 6px', fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
             {passed}/{total}
           </Tag>
@@ -559,7 +571,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
       key: 'verifications',
       label: (
         <span>
-          Verifications
+          {t('components.runResults.tabVerifications')}
           <Tag color={allPassed ? 'green' : 'red'} style={{ margin: '0 0 0 6px', fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
             {passed}/{total}
           </Tag>
@@ -581,7 +593,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
       key: 'dependencies',
       label: (
         <span>
-          Dependencies
+          {t('components.runResults.tabDependencies')}
           <Tag color="geekblue" style={{ margin: '0 0 0 6px', fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
             {depResults.length}
           </Tag>
@@ -613,8 +625,8 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
                         {dep.responseCode}
                       </Tag>
                       {dep.fromCache
-                        ? <Tag color="cyan" style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>Cached</Tag>
-                        : <Tag color="orange" style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>Fresh</Tag>}
+                        ? <Tag color="cyan" style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>{t('components.runResults.cached')}</Tag>
+                        : <Tag color="orange" style={{ margin: 0, fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>{t('components.runResults.fresh')}</Tag>}
                     </div>
                   ),
                   children: (
@@ -655,6 +667,7 @@ function StepResultCard({
   depResults: StepExecutionResult[]
   allSteps: TestStep[]
 }) {
+  const { t } = useTranslation()
   const stepDef = allSteps.find((s) => s.id === step.stepId)
   const method = stepDef?.method
 
@@ -677,28 +690,28 @@ function StepResultCard({
               </Tag>
               {step.responseBody && <Tag style={{ margin: 0 }}>{formatSize(step.responseBody)}</Tag>}
               {step.fromCache
-                ? <Tag color="cyan">Cached</Tag>
-                : <Tag color="orange">Fresh</Tag>}
+                ? <Tag color="cyan">{t('components.runResults.cached')}</Tag>
+                : <Tag color="orange">{t('components.runResults.fresh')}</Tag>}
               {depResults.length > 0 && (
-                <Tag color="geekblue" style={{ margin: 0 }}>{depResults.length} dep{depResults.length > 1 ? 's' : ''}</Tag>
+                <Tag color="geekblue" style={{ margin: 0 }}>{t('components.runResults.deps', { count: depResults.length })}</Tag>
               )}
               {step.responseValidationResults?.length > 0 && (() => {
                 const passed = step.responseValidationResults.filter(rv => rv.passed).length
                 const total = step.responseValidationResults.length
                 return (
-                  <Tag color={passed === total ? 'green' : 'red'} style={{ margin: 0 }}>{passed}/{total} validations</Tag>
+                  <Tag color={passed === total ? 'green' : 'red'} style={{ margin: 0 }}>{t('components.runResults.validations', { passed, total })}</Tag>
                 )
               })()}
               {step.verificationResults?.length > 0 && (() => {
                 const passed = step.verificationResults.filter(v => v.status === 'PASS').length
                 const total = step.verificationResults.length
                 return (
-                  <Tag color={passed === total ? 'green' : 'red'} style={{ margin: 0 }}>{passed}/{total} checks</Tag>
+                  <Tag color={passed === total ? 'green' : 'red'} style={{ margin: 0 }}>{t('components.runResults.checks', { passed, total })}</Tag>
                 )
               })()}
               {step.warnings?.length > 0 && (
                 <Tag color="warning" icon={<WarningOutlined />} style={{ margin: 0 }}>
-                  {step.warnings.length} unresolved var{step.warnings.length > 1 ? 's' : ''}
+                  {t('components.runResults.unresolvedVars', { count: step.warnings.length })}
                 </Tag>
               )}
             </div>
@@ -720,6 +733,7 @@ function StepResultCard({
 /* ─── Main Panel ─── */
 
 export default function RunResultsPanel({ result, allSteps, targetStepId, onClose }: RunResultsPanelProps) {
+  const { t } = useTranslation()
   const resultMap = new Map(result.steps.map((s) => [s.stepId, s]))
   const stepDefMap = new Map(allSteps.map((s) => [s.id, s]))
 
@@ -759,9 +773,9 @@ export default function RunResultsPanel({ result, allSteps, targetStepId, onClos
       size="small"
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Title level={5} style={{ margin: 0 }}>Run Results</Title>
+          <Title level={5} style={{ margin: 0 }}>{t('components.runResults.title')}</Title>
           {isStreaming ? (
-            <Tag icon={<LoadingOutlined spin />} color="processing">Running...</Tag>
+            <Tag icon={<LoadingOutlined spin />} color="processing">{t('components.runResults.running')}</Tag>
           ) : (
             <>
               <Badge
@@ -812,7 +826,7 @@ export default function RunResultsPanel({ result, allSteps, targetStepId, onClos
         {isStreaming && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingLeft: 4 }}>
             <Spin indicator={<LoadingOutlined spin style={{ fontSize: 16 }} />} />
-            <Text type="secondary" style={{ fontSize: 12 }}>Waiting for next step...</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>{t('components.runResults.waitingNextStep')}</Text>
           </div>
         )}
         <div ref={bottomRef} />

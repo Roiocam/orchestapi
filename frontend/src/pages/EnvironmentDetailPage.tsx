@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card,
@@ -45,112 +46,99 @@ import { environmentApi } from '../services/environmentApi'
 
 const { Title } = Typography
 
-const VALUE_TYPE_OPTIONS: { label: string; value: HeaderValueType }[] = [
-  { label: 'Static', value: 'STATIC' },
-  { label: 'Variable', value: 'VARIABLE' },
-  { label: 'UUID', value: 'UUID' },
-  { label: 'ISO Timestamp', value: 'ISO_TIMESTAMP' },
-]
-
-const VARIABLE_VALUE_TYPE_OPTIONS: { label: string; value: VariableValueType }[] = [
-  { label: 'Static', value: 'STATIC' },
-  { label: 'UUID', value: 'UUID' },
-  { label: 'ISO Timestamp', value: 'ISO_TIMESTAMP' },
-]
-
 interface ConnectorFieldDef {
   key: string
-  label: string
+  labelKey?: string
   secret?: boolean
   type?: 'text' | 'toggle' | 'textarea'
   showWhen?: string
 }
 
 const SSL_FIELDS: ConnectorFieldDef[] = [
-  { key: 'ssl', label: 'Enable SSL/TLS', type: 'toggle' },
-  { key: 'caCertificate', label: 'CA Certificate (PEM)', type: 'textarea', showWhen: 'ssl' },
+  { key: 'ssl', type: 'toggle' },
+  { key: 'caCertificate', type: 'textarea', showWhen: 'ssl' },
 ]
 
 const CONNECTOR_CONFIG_FIELDS: Record<ConnectorType, ConnectorFieldDef[]> = {
   MYSQL: [
-    { key: 'host', label: 'Host' },
-    { key: 'port', label: 'Port' },
-    { key: 'database', label: 'Database' },
-    { key: 'username', label: 'Username' },
-    { key: 'password', label: 'Password', secret: true },
+    { key: 'host' },
+    { key: 'port' },
+    { key: 'database' },
+    { key: 'username' },
+    { key: 'password', secret: true },
     ...SSL_FIELDS,
   ],
   POSTGRES: [
-    { key: 'host', label: 'Host' },
-    { key: 'port', label: 'Port' },
-    { key: 'database', label: 'Database' },
-    { key: 'username', label: 'Username' },
-    { key: 'password', label: 'Password', secret: true },
+    { key: 'host' },
+    { key: 'port' },
+    { key: 'database' },
+    { key: 'username' },
+    { key: 'password', secret: true },
     ...SSL_FIELDS,
   ],
   ORACLE: [
-    { key: 'host', label: 'Host' },
-    { key: 'port', label: 'Port' },
-    { key: 'database', label: 'Database' },
-    { key: 'username', label: 'Username' },
-    { key: 'password', label: 'Password', secret: true },
+    { key: 'host' },
+    { key: 'port' },
+    { key: 'database' },
+    { key: 'username' },
+    { key: 'password', secret: true },
     ...SSL_FIELDS,
   ],
   SQLSERVER: [
-    { key: 'host', label: 'Host' },
-    { key: 'port', label: 'Port' },
-    { key: 'database', label: 'Database' },
-    { key: 'username', label: 'Username' },
-    { key: 'password', label: 'Password', secret: true },
+    { key: 'host' },
+    { key: 'port' },
+    { key: 'database' },
+    { key: 'username' },
+    { key: 'password', secret: true },
     ...SSL_FIELDS,
   ],
   REDIS: [
-    { key: 'host', label: 'Host' },
-    { key: 'port', label: 'Port' },
-    { key: 'password', label: 'Password', secret: true },
-    { key: 'database', label: 'Database (0-15)' },
+    { key: 'host' },
+    { key: 'port' },
+    { key: 'password', secret: true },
+    { key: 'database', labelKey: 'databaseRedis' },
     ...SSL_FIELDS,
   ],
   ELASTICSEARCH: [
-    { key: 'url', label: 'URL' },
-    { key: 'username', label: 'Username' },
-    { key: 'password', label: 'Password', secret: true },
+    { key: 'url' },
+    { key: 'username' },
+    { key: 'password', secret: true },
     ...SSL_FIELDS,
   ],
   KAFKA: [
-    { key: 'brokers', label: 'Brokers' },
-    { key: 'groupId', label: 'Group ID' },
-    { key: 'securityProtocol', label: 'Security Protocol' },
-    { key: 'saslMechanism', label: 'SASL Mechanism' },
-    { key: 'saslUsername', label: 'SASL Username' },
-    { key: 'saslPassword', label: 'SASL Password', secret: true },
+    { key: 'brokers' },
+    { key: 'groupId' },
+    { key: 'securityProtocol' },
+    { key: 'saslMechanism' },
+    { key: 'saslUsername' },
+    { key: 'saslPassword', secret: true },
     ...SSL_FIELDS,
   ],
   RABBITMQ: [
-    { key: 'host', label: 'Host' },
-    { key: 'port', label: 'Port' },
-    { key: 'virtualHost', label: 'Virtual Host' },
-    { key: 'username', label: 'Username' },
-    { key: 'password', label: 'Password', secret: true },
+    { key: 'host' },
+    { key: 'port' },
+    { key: 'virtualHost' },
+    { key: 'username' },
+    { key: 'password', secret: true },
     ...SSL_FIELDS,
   ],
   MONGODB: [
-    { key: 'connectionString', label: 'Connection String' },
+    { key: 'connectionString' },
     ...SSL_FIELDS,
   ],
 }
 
-const CONNECTOR_TYPE_OPTIONS: { label: string; value: ConnectorType }[] = [
-  { label: 'MySQL', value: 'MYSQL' },
-  { label: 'PostgreSQL', value: 'POSTGRES' },
-  { label: 'Oracle', value: 'ORACLE' },
-  { label: 'SQL Server', value: 'SQLSERVER' },
-  { label: 'Redis', value: 'REDIS' },
-  { label: 'Elasticsearch', value: 'ELASTICSEARCH' },
-  { label: 'Kafka', value: 'KAFKA' },
-  { label: 'RabbitMQ', value: 'RABBITMQ' },
-  { label: 'MongoDB', value: 'MONGODB' },
-]
+const CONNECTOR_TYPE_I18N: Record<ConnectorType, string> = {
+  MYSQL: 'mysql',
+  POSTGRES: 'postgres',
+  ORACLE: 'oracle',
+  SQLSERVER: 'sqlServer',
+  REDIS: 'redis',
+  ELASTICSEARCH: 'elasticsearch',
+  KAFKA: 'kafka',
+  RABBITMQ: 'rabbitmq',
+  MONGODB: 'mongodb',
+}
 
 const MASKED_SECRET = '••••••••'
 
@@ -203,10 +191,42 @@ function getDuplicateIndices<T>(items: T[], getKey: (item: T) => string): Set<nu
 }
 
 export default function EnvironmentDetailPage() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [form] = Form.useForm()
   const isNew = id === 'new'
+
+  const valueTypeOptions = useMemo(
+    (): { label: string; value: HeaderValueType }[] => [
+      { label: t('pages.environmentDetail.valueTypeStatic'), value: 'STATIC' },
+      { label: t('pages.environmentDetail.valueTypeVariable'), value: 'VARIABLE' },
+      { label: t('pages.environmentDetail.valueTypeUuid'), value: 'UUID' },
+      { label: t('pages.environmentDetail.valueTypeIsoTimestamp'), value: 'ISO_TIMESTAMP' },
+    ],
+    [t],
+  )
+
+  const variableValueTypeOptions = useMemo(
+    (): { label: string; value: VariableValueType }[] => [
+      { label: t('pages.environmentDetail.valueTypeStatic'), value: 'STATIC' },
+      { label: t('pages.environmentDetail.valueTypeUuid'), value: 'UUID' },
+      { label: t('pages.environmentDetail.valueTypeIsoTimestamp'), value: 'ISO_TIMESTAMP' },
+    ],
+    [t],
+  )
+
+  const connectorTypeOptions = useMemo(
+    (): { label: string; value: ConnectorType }[] =>
+      (Object.keys(CONNECTOR_TYPE_I18N) as ConnectorType[]).map((type) => ({
+        label: t(`pages.environmentDetail.connectorTypes.${CONNECTOR_TYPE_I18N[type]}`),
+        value: type,
+      })),
+    [t],
+  )
+
+  const connectorFieldLabel = (field: ConnectorFieldDef) =>
+    t(`pages.environmentDetail.connectorFields.${field.labelKey ?? field.key}`)
 
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -269,7 +289,7 @@ export default function EnvironmentDetailPage() {
         setOAuthClearSecret(false)
       } catch {
         if (cancelled) return
-        message.error('Failed to load environment')
+        message.error(t('pages.environmentDetail.failedLoad'))
         navigate('/environments')
       } finally {
         if (!cancelled) setLoading(false)
@@ -301,13 +321,13 @@ export default function EnvironmentDetailPage() {
 
   const handleUploadFile = async () => {
     if (!id || !uploadFileKey.trim() || !uploadFile) {
-      message.error('File key and file are required')
+      message.error(t('pages.environmentDetail.fileKeyRequired'))
       return
     }
     setUploading(true)
     try {
       await environmentApi.uploadFile(id, uploadFileKey.trim(), uploadFile)
-      message.success('File uploaded')
+      message.success(t('pages.environmentDetail.fileUploaded'))
       setUploadModalOpen(false)
       setUploadFileKey('')
       setUploadFile(null)
@@ -315,9 +335,9 @@ export default function EnvironmentDetailPage() {
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Upload failed')
+        message.error(axiosErr.response?.data?.error ?? t('pages.environmentDetail.uploadFailed'))
       } else {
-        message.error('Upload failed')
+        message.error(t('pages.environmentDetail.uploadFailed'))
       }
     } finally {
       setUploading(false)
@@ -337,7 +357,7 @@ export default function EnvironmentDetailPage() {
       a.remove()
       window.URL.revokeObjectURL(url)
     } catch {
-      message.error('Download failed')
+      message.error(t('pages.environmentDetail.downloadFailed'))
     }
   }
 
@@ -345,10 +365,10 @@ export default function EnvironmentDetailPage() {
     if (!id) return
     try {
       await environmentApi.deleteFile(id, fileId)
-      message.success('File deleted')
+      message.success(t('pages.environmentDetail.fileDeleted'))
       loadFiles()
     } catch {
-      message.error('Delete failed')
+      message.error(t('pages.environmentDetail.deleteFailed'))
     }
   }
 
@@ -378,28 +398,28 @@ export default function EnvironmentDetailPage() {
   const handleSave = async () => {
     setShowErrors(true)
     if (hasDuplicates) {
-      message.error('Please fix duplicate keys before saving')
+      message.error(t('pages.environmentDetail.duplicateKeysError'))
       return
     }
     if (hasEmptyFields) {
-      message.error('Please fill in all required fields')
+      message.error(t('pages.environmentDetail.requiredFieldsError'))
       return
     }
     if (oauth.enabled) {
       if (!oauth.tokenEndpoint.trim() || !oauth.clientId.trim()) {
-        message.error('OAuth token endpoint and client ID are required when OAuth is enabled')
+        message.error(t('pages.environmentDetail.oauthTokenRequired'))
         return
       }
       if (oauthClearSecret || (!oauthSecretConfigured && !oauth.clientSecret)) {
-        message.error('OAuth client secret is required when OAuth is enabled')
+        message.error(t('pages.environmentDetail.oauthSecretRequired'))
         return
       }
       if (!Number.isFinite(oauth.requestTimeoutMs) || oauth.requestTimeoutMs <= 0) {
-        message.error('OAuth request timeout must be greater than zero')
+        message.error(t('pages.environmentDetail.oauthTimeoutError'))
         return
       }
       if (!Number.isFinite(oauth.refreshSkewSeconds) || oauth.refreshSkewSeconds < 0) {
-        message.error('OAuth refresh skew must not be negative')
+        message.error(t('pages.environmentDetail.oauthRefreshSkewError'))
         return
       }
     }
@@ -434,10 +454,10 @@ export default function EnvironmentDetailPage() {
 
       if (isNew) {
         await environmentApi.create(request)
-        message.success('Environment created')
+        message.success(t('pages.environmentDetail.created'))
       } else {
         await environmentApi.update(id!, request)
-        message.success('Environment updated')
+        message.success(t('pages.environmentDetail.updated'))
       }
       navigate('/environments')
     } catch (err: unknown) {
@@ -447,9 +467,9 @@ export default function EnvironmentDetailPage() {
       }
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
-        message.error(axiosErr.response?.data?.error ?? 'Failed to save')
+        message.error(axiosErr.response?.data?.error ?? t('common.failedSave'))
       } else {
-        message.error('Failed to save')
+        message.error(t('common.failedSave'))
       }
     } finally {
       setSaving(false)
@@ -548,12 +568,12 @@ export default function EnvironmentDetailPage() {
         connectorName: conn.name || undefined,
       })
       if (result.success) {
-        message.success(`Connection successful (${result.durationMs}ms)`)
+        message.success(t('pages.environmentDetail.connectionSuccess', { durationMs: result.durationMs }))
       } else {
-        message.error(result.message || 'Connection failed')
+        message.error(result.message || t('pages.environmentDetail.connectionFailed'))
       }
     } catch {
-      message.error('Failed to test connection')
+      message.error(t('pages.environmentDetail.testConnectionFailed'))
     } finally {
       setTestingConnector((prev) => ({ ...prev, [clientId]: false }))
     }
@@ -573,18 +593,18 @@ export default function EnvironmentDetailPage() {
   // --- Table columns ---
   const varColumns = [
     {
-      title: 'Key',
+      title: t('common.key'),
       dataIndex: 'key',
       width: '25%',
       render: (_: string, record: VariableRow, index: number) => {
         const isDup = dupVarIndices.has(index)
         const isEmpty = showErrors && emptyVarKeys.has(index)
         const hasError = isDup || isEmpty
-        const errorMsg = isDup ? 'Duplicate variable key' : isEmpty ? 'Key is required' : undefined
+        const errorMsg = isDup ? t('pages.environmentDetail.duplicateVariableKey') : isEmpty ? t('pages.environmentDetail.keyRequired') : undefined
         return (
           <Tooltip title={errorMsg} color="red" open={hasError ? undefined : false}>
             <Input
-              placeholder="e.g. API_KEY"
+              placeholder={t('pages.environmentDetail.variableKeyPlaceholder')}
               value={record.key}
               onChange={(e) => updateVariable(index, 'key', e.target.value)}
               size="small"
@@ -595,7 +615,7 @@ export default function EnvironmentDetailPage() {
       },
     },
     {
-      title: 'Value Type',
+      title: t('pages.environmentDetail.valueType'),
       dataIndex: 'valueType',
       width: '15%',
       render: (_: string, record: VariableRow, index: number) => (
@@ -603,7 +623,7 @@ export default function EnvironmentDetailPage() {
           showSearch
           value={record.valueType || 'STATIC'}
           onChange={(val) => updateVariable(index, 'valueType', val)}
-          options={VARIABLE_VALUE_TYPE_OPTIONS}
+          options={variableValueTypeOptions}
           size="small"
           style={{ width: '100%' }}
           filterOption={(input, option) =>
@@ -613,24 +633,24 @@ export default function EnvironmentDetailPage() {
       ),
     },
     {
-      title: 'Value',
+      title: t('common.value'),
       dataIndex: 'value',
       width: '30%',
       render: (_: string, record: VariableRow, index: number) => {
         if (record.valueType === 'UUID' || record.valueType === 'ISO_TIMESTAMP') {
           return (
             <span style={{ color: '#999', fontStyle: 'italic', fontSize: 12 }}>
-              (auto-generated)
+              {t('pages.environmentDetail.autoGenerated')}
             </span>
           )
         }
         const isMasked = record.secret && !revealedIds.has(record._clientId)
         const isEmpty = showErrors && emptyVarValues.has(index)
         return (
-          <Tooltip title={isEmpty ? 'Value is required' : undefined} color="red" open={isEmpty ? undefined : false}>
+          <Tooltip title={isEmpty ? t('pages.environmentDetail.valueRequired') : undefined} color="red" open={isEmpty ? undefined : false}>
             <Space.Compact style={{ width: '100%' }}>
               <Input
-                placeholder="Value"
+                placeholder={t('pages.environmentDetail.valuePlaceholder')}
                 value={record.value}
                 onChange={(e) => updateVariable(index, 'value', e.target.value)}
                 type={isMasked ? 'password' : 'text'}
@@ -651,7 +671,7 @@ export default function EnvironmentDetailPage() {
       },
     },
     {
-      title: 'Secret',
+      title: t('common.secret'),
       dataIndex: 'secret',
       width: '10%',
       render: (_: boolean, record: VariableRow, index: number) => (
@@ -670,7 +690,7 @@ export default function EnvironmentDetailPage() {
       render: (_: unknown, record: VariableRow) => {
         const index = variables.indexOf(record)
         return (
-          <Popconfirm title="Remove?" onConfirm={() => removeVariable(index)} okType="danger">
+          <Popconfirm title={t('common.removeConfirm')} onConfirm={() => removeVariable(index)} okType="danger">
             <Button type="text" danger icon={<DeleteOutlined />} size="small" />
           </Popconfirm>
         )
@@ -680,18 +700,18 @@ export default function EnvironmentDetailPage() {
 
   const headerColumns = [
     {
-      title: 'Header Key',
+      title: t('pages.environmentDetail.headerKey'),
       dataIndex: 'headerKey',
       width: '28%',
       render: (_: string, record: HeaderRow, index: number) => {
         const isDup = dupHdrIndices.has(index)
         const isEmpty = showErrors && emptyHdrKeys.has(index)
         const hasError = isDup || isEmpty
-        const errorMsg = isDup ? 'Duplicate header key' : isEmpty ? 'Header key is required' : undefined
+        const errorMsg = isDup ? t('pages.environmentDetail.duplicateHeaderKey') : isEmpty ? t('pages.environmentDetail.headerKeyRequired') : undefined
         return (
           <Tooltip title={errorMsg} color="red" open={hasError ? undefined : false}>
             <Input
-              placeholder="e.g. Content-Type"
+              placeholder={t('pages.environmentDetail.headerKeyPlaceholder')}
               value={record.headerKey}
               onChange={(e) => updateHeader(index, 'headerKey', e.target.value)}
               size="small"
@@ -702,7 +722,7 @@ export default function EnvironmentDetailPage() {
       },
     },
     {
-      title: 'Value Type',
+      title: t('pages.environmentDetail.valueType'),
       dataIndex: 'valueType',
       width: '22%',
       render: (_: string, record: HeaderRow, index: number) => (
@@ -710,7 +730,7 @@ export default function EnvironmentDetailPage() {
           showSearch
           value={record.valueType}
           onChange={(val) => updateHeader(index, 'valueType', val)}
-          options={VALUE_TYPE_OPTIONS}
+          options={valueTypeOptions}
           size="small"
           style={{ width: '100%' }}
           filterOption={(input, option) =>
@@ -720,7 +740,7 @@ export default function EnvironmentDetailPage() {
       ),
     },
     {
-      title: 'Value',
+      title: t('common.value'),
       dataIndex: 'headerValue',
       width: '30%',
       render: (_: string, record: HeaderRow, index: number) => {
@@ -728,7 +748,7 @@ export default function EnvironmentDetailPage() {
         if (type === 'UUID' || type === 'ISO_TIMESTAMP') {
           return (
             <span style={{ color: '#999', fontStyle: 'italic', fontSize: 12 }}>
-              (auto-generated)
+              {t('pages.environmentDetail.autoGenerated')}
             </span>
           )
         }
@@ -739,7 +759,7 @@ export default function EnvironmentDetailPage() {
               value={record.headerValue || undefined}
               onChange={(val) => updateHeader(index, 'headerValue', val)}
               options={variableKeyOptions}
-              placeholder="Select variable"
+              placeholder={t('pages.environmentDetail.selectVariable')}
               size="small"
               style={{ width: '100%' }}
               allowClear
@@ -751,7 +771,7 @@ export default function EnvironmentDetailPage() {
         }
         return (
           <Input
-            placeholder="e.g. application/json"
+            placeholder={t('pages.environmentDetail.headerValuePlaceholder')}
             value={record.headerValue}
             onChange={(e) => updateHeader(index, 'headerValue', e.target.value)}
             size="small"
@@ -764,7 +784,7 @@ export default function EnvironmentDetailPage() {
       key: 'actions',
       width: '8%',
       render: (_: unknown, _record: HeaderRow, index: number) => (
-        <Popconfirm title="Remove?" onConfirm={() => removeHeader(index)} okType="danger">
+        <Popconfirm title={t('common.removeConfirm')} onConfirm={() => removeHeader(index)} okType="danger">
           <Button type="text" danger icon={<DeleteOutlined />} size="small" />
         </Popconfirm>
       ),
@@ -785,14 +805,14 @@ export default function EnvironmentDetailPage() {
         <div className="suite-detail-title-wrap">
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/environments')} />
           <div className="page-header-copy">
-            <div className="page-header-kicker">{isNew ? 'Create environment' : 'Environment'}</div>
+            <div className="page-header-kicker">{isNew ? t('pages.environmentDetail.createKicker') : t('pages.environmentDetail.kicker')}</div>
             <Title level={4} className="page-header-title" style={{ fontSize: 18 }}>
-              {isNew ? 'New Environment' : 'Edit Environment'}
+              {isNew ? t('pages.environments.newEnvironment') : t('pages.environmentDetail.editTitle')}
             </Title>
           </div>
         </div>
         <div className="page-header-actions">
-          <Tooltip title={hasDuplicates ? 'Fix duplicate keys before saving' : (showErrors && hasEmptyFields) ? 'Fill in all required fields' : undefined}>
+          <Tooltip title={hasDuplicates ? t('pages.environmentDetail.fixDuplicatesTooltip') : (showErrors && hasEmptyFields) ? t('pages.environmentDetail.fillRequiredTooltip') : undefined}>
             <Button
               type="primary"
               icon={<SaveOutlined />}
@@ -800,7 +820,7 @@ export default function EnvironmentDetailPage() {
               loading={saving}
               disabled={hasDuplicates || (showErrors && hasEmptyFields)}
             >
-              Save environment
+              {t('pages.environmentDetail.saveEnvironment')}
             </Button>
           </Tooltip>
         </div>
@@ -809,8 +829,8 @@ export default function EnvironmentDetailPage() {
       <div className="product-panel" style={{ marginBottom: 14 }}>
         <div className="product-panel-header">
           <div>
-            <div className="product-panel-title">Basics</div>
-            <div className="product-panel-subtitle">Name and base URL for this runtime target.</div>
+            <div className="product-panel-title">{t('pages.environmentDetail.basicsTitle')}</div>
+            <div className="product-panel-subtitle">{t('pages.environmentDetail.basicsSubtitle')}</div>
           </div>
         </div>
         <div className="product-panel-body">
@@ -818,22 +838,22 @@ export default function EnvironmentDetailPage() {
             <div className="form-grid-2">
               <Form.Item
                 name="name"
-                label="Name"
-                rules={[{ required: true, message: 'Name is required' }]}
-                extra="Short label like DEV or STAGING."
+                label={t('common.name')}
+                rules={[{ required: true, message: t('common.nameRequired') }]}
+                extra={t('pages.environmentDetail.nameExtra')}
               >
-                <Input placeholder="e.g. DEV, QA, STAGING" autoFocus={isNew} />
+                <Input placeholder={t('pages.environmentDetail.namePlaceholder')} autoFocus={isNew} />
               </Form.Item>
               <Form.Item
                 name="baseUrl"
-                label="Base URL"
+                label={t('pages.environmentDetail.baseUrl')}
                 rules={[
-                  { required: true, message: 'Base URL is required' },
-                  { pattern: /^https?:\/\//, message: 'Must start with http:// or https://' },
+                  { required: true, message: t('pages.environmentDetail.baseUrlRequired') },
+                  { pattern: /^https?:\/\//, message: t('pages.environmentDetail.baseUrlPattern') },
                 ]}
-                extra="Request URLs resolve relative to this host."
+                extra={t('pages.environmentDetail.baseUrlExtra')}
               >
-                <Input placeholder="e.g. https://api-dev.example.com" />
+                <Input placeholder={t('pages.environmentDetail.baseUrlPlaceholder')} />
               </Form.Item>
             </div>
           </Form>
@@ -842,11 +862,11 @@ export default function EnvironmentDetailPage() {
 
       <Card
         size="small"
-        title="OAuth 2.0 Client Credentials"
+        title={t('pages.environmentDetail.oauthTitle')}
         extra={
           <Space size={8}>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Acquire a token lazily before the first eligible request
+              {t('pages.environmentDetail.oauthHint')}
             </Typography.Text>
             <Switch checked={oauth.enabled} onChange={(checked) => updateOAuth('enabled', checked)} />
           </Space>
@@ -855,30 +875,30 @@ export default function EnvironmentDetailPage() {
       >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
           <div style={{ gridColumn: '1 / -1' }}>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Token Endpoint</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.tokenEndpoint')}</div>
             <Input
               value={oauth.tokenEndpoint}
               onChange={(e) => updateOAuth('tokenEndpoint', e.target.value)}
-              placeholder="https://auth.example.com/oauth2/token"
+              placeholder={t('pages.environmentDetail.tokenEndpointPlaceholder')}
               disabled={!oauth.enabled}
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Client ID</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.clientId')}</div>
             <Input
               value={oauth.clientId}
               onChange={(e) => updateOAuth('clientId', e.target.value)}
-              placeholder="OAuth client ID"
+              placeholder={t('pages.environmentDetail.clientIdPlaceholder')}
               disabled={!oauth.enabled}
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Client Secret</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.clientSecret')}</div>
             <Space.Compact style={{ width: '100%' }}>
               <Input.Password
                 value={oauth.clientSecret}
                 onChange={(e) => updateOAuthSecret(e.target.value)}
-                placeholder={oauthSecretConfigured ? 'Saved secret (masked)' : 'OAuth client secret'}
+                placeholder={oauthSecretConfigured ? t('pages.environmentDetail.savedSecretMasked') : t('pages.environmentDetail.clientSecretPlaceholder')}
                 visibilityToggle={false}
                 disabled={!oauth.enabled && !oauthSecretConfigured}
               />
@@ -898,51 +918,51 @@ export default function EnvironmentDetailPage() {
                     }
                   }}
                 >
-                  {oauthClearSecret ? 'Undo clear' : 'Clear'}
+                  {oauthClearSecret ? t('pages.environmentDetail.undoClear') : t('pages.environmentDetail.clear')}
                 </Button>
               )}
             </Space.Compact>
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
               {oauthClearSecret
-                ? 'The saved secret will be removed when you save.'
+                ? t('pages.environmentDetail.secretRemoveHint')
                 : oauthSecretConfigured
-                  ? 'The saved value is masked and is never returned to the browser.'
-                  : 'Stored by the Environment API as a secret.'}
+                  ? t('pages.environmentDetail.secretMaskedHint')
+                  : t('pages.environmentDetail.secretStoredHint')}
             </Typography.Text>
           </div>
           <div>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Client Authentication</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.clientAuthentication')}</div>
             <Select
               value={oauth.clientAuthMethod}
               onChange={(value: OAuthClientAuthMethod) => updateOAuth('clientAuthMethod', value)}
               options={[
-                { label: 'HTTP Basic (client_secret_basic)', value: 'client_secret_basic' },
-                { label: 'Form body (client_secret_post)', value: 'client_secret_post' },
+                { label: t('pages.environmentDetail.clientAuthBasic'), value: 'client_secret_basic' },
+                { label: t('pages.environmentDetail.clientAuthPost'), value: 'client_secret_post' },
               ]}
               style={{ width: '100%' }}
               disabled={!oauth.enabled}
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Scopes</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.scopes')}</div>
             <Input
               value={oauth.scopes}
               onChange={(e) => updateOAuth('scopes', e.target.value)}
-              placeholder="scope.read scope.write"
+              placeholder={t('pages.environmentDetail.scopesPlaceholder')}
               disabled={!oauth.enabled}
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Audience</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.audience')}</div>
             <Input
               value={oauth.audience}
               onChange={(e) => updateOAuth('audience', e.target.value)}
-              placeholder="Optional audience"
+              placeholder={t('pages.environmentDetail.audiencePlaceholder')}
               disabled={!oauth.enabled}
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Refresh Skew (seconds)</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.refreshSkew')}</div>
             <InputNumber
               min={0}
               value={oauth.refreshSkewSeconds}
@@ -952,7 +972,7 @@ export default function EnvironmentDetailPage() {
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>Token Request Timeout (ms)</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.requestTimeout')}</div>
             <InputNumber
               min={1}
               value={oauth.requestTimeoutMs}
@@ -967,10 +987,10 @@ export default function EnvironmentDetailPage() {
       <Card
         size="small"
         className="brand-card card-env"
-        title="Variables"
+        title={t('pages.environmentDetail.variablesTitle')}
         extra={
           <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addVariable}>
-            Add Variable
+            {t('pages.environmentDetail.addVariable')}
           </Button>
         }
         style={{ marginBottom: 12 }}
@@ -981,17 +1001,17 @@ export default function EnvironmentDetailPage() {
           rowKey="_clientId"
           pagination={false}
           size="small"
-          locale={{ emptyText: 'No variables yet. Click "Add Variable" to create one.' }}
+          locale={{ emptyText: t('pages.environmentDetail.emptyVariables') }}
         />
       </Card>
 
       <Card
         size="small"
         className="brand-card card-env"
-        title="Default Headers"
+        title={t('pages.environmentDetail.defaultHeadersTitle')}
         extra={
           <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addHeader}>
-            Add Header
+            {t('pages.environmentDetail.addHeader')}
           </Button>
         }
       >
@@ -1001,37 +1021,37 @@ export default function EnvironmentDetailPage() {
           rowKey="_clientId"
           pagination={false}
           size="small"
-          locale={{ emptyText: 'No default headers yet. Click "Add Header" to create one.' }}
+          locale={{ emptyText: t('pages.environmentDetail.emptyHeaders') }}
         />
       </Card>
 
       {!isNew && (
         <Card
           size="small"
-          title="Files"
+          title={t('pages.environmentDetail.filesTitle')}
           extra={
             <Button type="dashed" size="small" icon={<UploadOutlined />} onClick={() => setUploadModalOpen(true)}>
-              Upload File
+              {t('pages.environmentDetail.uploadFile')}
             </Button>
           }
           style={{ marginTop: 12 }}
         >
           <Table
             columns={[
-              { title: 'File Key', dataIndex: 'fileKey', key: 'fileKey', width: 200 },
-              { title: 'File Name', dataIndex: 'fileName', key: 'fileName' },
-              { title: 'Type', dataIndex: 'contentType', key: 'contentType', width: 160 },
-              { title: 'Size', dataIndex: 'fileSize', key: 'fileSize', width: 100, render: (v: number) => formatFileSize(v) },
+              { title: t('pages.environmentDetail.fileKey'), dataIndex: 'fileKey', key: 'fileKey', width: 200 },
+              { title: t('pages.environmentDetail.fileName'), dataIndex: 'fileName', key: 'fileName' },
+              { title: t('common.type'), dataIndex: 'contentType', key: 'contentType', width: 160 },
+              { title: t('common.size'), dataIndex: 'fileSize', key: 'fileSize', width: 100, render: (v: number) => formatFileSize(v) },
               {
-                title: 'Actions',
+                title: t('common.actions'),
                 key: 'actions',
                 width: 100,
                 render: (_: unknown, record: EnvironmentFileResponse) => (
                   <Space size={4}>
-                    <Tooltip title="Download">
+                    <Tooltip title={t('common.download')}>
                       <Button type="text" size="small" icon={<DownloadOutlined />} onClick={() => handleDownloadFile(record)} />
                     </Tooltip>
-                    <Popconfirm title="Delete this file?" onConfirm={() => handleDeleteFile(record.id)} okType="danger">
+                    <Popconfirm title={t('pages.environmentDetail.deleteFileConfirm')} onConfirm={() => handleDeleteFile(record.id)} okType="danger">
                       <Button type="text" danger size="small" icon={<DeleteOutlined />} />
                     </Popconfirm>
                   </Space>
@@ -1043,36 +1063,36 @@ export default function EnvironmentDetailPage() {
             pagination={false}
             size="small"
             loading={filesLoading}
-            locale={{ emptyText: 'No files yet. Upload files to reference them in form-data steps via ${FILE:key}.' }}
+            locale={{ emptyText: t('pages.environmentDetail.emptyFiles') }}
           />
           <Modal
-            title="Upload File"
+            title={t('pages.environmentDetail.uploadModalTitle')}
             open={uploadModalOpen}
             onCancel={() => { setUploadModalOpen(false); setUploadFileKey(''); setUploadFile(null) }}
             onOk={handleUploadFile}
             confirmLoading={uploading}
-            okText="Upload"
+            okText={t('common.upload')}
             okButtonProps={{ disabled: !uploadFileKey.trim() || !uploadFile }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>File Key (used in ${'{'}FILE:key{'}'} references)</div>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.uploadFileKeyLabel')}</div>
                 <Input
                   size="small"
                   value={uploadFileKey}
                   onChange={(e) => setUploadFileKey(e.target.value)}
-                  placeholder="e.g. my-certificate, test-payload"
+                  placeholder={t('pages.environmentDetail.uploadFileKeyPlaceholder')}
                 />
               </div>
               <div>
-                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>File (max 50MB)</div>
+                <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>{t('pages.environmentDetail.uploadFileLabel')}</div>
                 <Upload
                   beforeUpload={(file) => { setUploadFile(file); return false }}
                   maxCount={1}
                   fileList={uploadFile ? [{ uid: '-1', name: uploadFile.name, status: 'done' as const }] : []}
                   onRemove={() => setUploadFile(null)}
                 >
-                  <Button size="small" icon={<UploadOutlined />}>Select File</Button>
+                  <Button size="small" icon={<UploadOutlined />}>{t('pages.environmentDetail.selectFile')}</Button>
                 </Upload>
               </div>
             </div>
@@ -1082,17 +1102,17 @@ export default function EnvironmentDetailPage() {
 
       <Card
         size="small"
-        title="Connectors"
+        title={t('pages.environmentDetail.connectorsTitle')}
         extra={
           <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addConnector}>
-            Add Connector
+            {t('pages.environmentDetail.addConnector')}
           </Button>
         }
         style={{ marginTop: 12 }}
       >
         {connectors.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#999', padding: '12px 0' }}>
-            No connectors yet. Click &quot;Add Connector&quot; to create one.
+            {t('pages.environmentDetail.emptyConnectors')}
           </div>
         ) : (
           <Collapse
@@ -1109,7 +1129,7 @@ export default function EnvironmentDetailPage() {
                       showSearch
                       value={conn.type}
                       onChange={(val) => updateConnector(index, 'type', val)}
-                      options={CONNECTOR_TYPE_OPTIONS}
+                      options={connectorTypeOptions}
                       size="small"
                       style={{ width: 140 }}
                       filterOption={(input, option) =>
@@ -1117,9 +1137,9 @@ export default function EnvironmentDetailPage() {
                       }
                       onClick={(e) => e.stopPropagation()}
                     />
-                    <Tooltip title={isDupName ? 'Duplicate connector name' : isEmptyName ? 'Connector name is required' : undefined} color="red" open={isDupName || isEmptyName ? undefined : false}>
+                    <Tooltip title={isDupName ? t('pages.environmentDetail.duplicateConnectorName') : isEmptyName ? t('pages.environmentDetail.connectorNameRequired') : undefined} color="red" open={isDupName || isEmptyName ? undefined : false}>
                       <Input
-                        placeholder="Connector name"
+                        placeholder={t('pages.environmentDetail.connectorNamePlaceholder')}
                         value={conn.name}
                         onChange={(e) => { e.stopPropagation(); updateConnector(index, 'name', e.target.value) }}
                         onClick={(e) => e.stopPropagation()}
@@ -1129,7 +1149,7 @@ export default function EnvironmentDetailPage() {
                       />
                     </Tooltip>
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                      <Tooltip title="Test Connection">
+                      <Tooltip title={t('pages.environmentDetail.testConnection')}>
                         <Button
                           type="text"
                           icon={<ApiOutlined />}
@@ -1138,7 +1158,7 @@ export default function EnvironmentDetailPage() {
                           onClick={(e) => { e.stopPropagation(); handleTestConnector(index) }}
                         />
                       </Tooltip>
-                      <Popconfirm title="Remove connector?" onConfirm={() => removeConnector(index)} okType="danger">
+                      <Popconfirm title={t('pages.environmentDetail.removeConnectorConfirm')} onConfirm={() => removeConnector(index)} okType="danger">
                         <Button type="text" danger icon={<DeleteOutlined />} size="small" onClick={(e) => e.stopPropagation()} />
                       </Popconfirm>
                     </div>
@@ -1150,7 +1170,7 @@ export default function EnvironmentDetailPage() {
                       .filter((field) => !field.showWhen || conn.config[field.showWhen] === 'true')
                       .map((field) => (
                       <div key={field.key} style={field.type === 'textarea' ? { gridColumn: '1 / -1' } : undefined}>
-                        <div style={{ fontSize: 12, color: '#666', marginBottom: 2 }}>{field.label}</div>
+                        <div style={{ fontSize: 12, color: '#666', marginBottom: 2 }}>{connectorFieldLabel(field)}</div>
                         {field.type === 'toggle' ? (
                           <Switch
                             size="small"
@@ -1163,7 +1183,7 @@ export default function EnvironmentDetailPage() {
                             rows={3}
                             value={conn.config[field.key] ?? ''}
                             onChange={(e) => updateConnectorConfig(index, field.key, e.target.value)}
-                            placeholder={'-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----'}
+                            placeholder={t('pages.environmentDetail.caCertificatePlaceholder')}
                             style={{ fontFamily: 'monospace', fontSize: 11 }}
                           />
                         ) : field.secret ? (
@@ -1171,14 +1191,14 @@ export default function EnvironmentDetailPage() {
                             size="small"
                             value={conn.config[field.key] ?? ''}
                             onChange={(e) => updateConnectorConfig(index, field.key, e.target.value)}
-                            placeholder={field.label}
+                            placeholder={connectorFieldLabel(field)}
                           />
                         ) : (
                           <Input
                             size="small"
                             value={conn.config[field.key] ?? ''}
                             onChange={(e) => updateConnectorConfig(index, field.key, e.target.value)}
-                            placeholder={field.label}
+                            placeholder={connectorFieldLabel(field)}
                           />
                         )}
                       </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Table,
   Button,
@@ -39,6 +40,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { Webhook, WebhookRequestLog, WebhookResponseRuleDto, WebhookConditionType } from '../types/webhook'
 import type { WebhookRequest } from '../types/webhook'
 import { webhookApi } from '../services/webhookApi'
+import { formatDate, formatDateTime, formatTime } from '../utils/datetime'
 
 const { Title, Text } = Typography
 
@@ -52,9 +54,10 @@ const METHOD_COLORS: Record<string, string> = {
   OPTIONS: '#8c8c8c',
 }
 
-const COLUMN_LABELS: Record<string, string> = {
-  name: 'Name',
-  description: 'Description',
+function columnLabel(dataIndex: string, t: (key: string) => string): string {
+  if (dataIndex === 'name') return t('common.name')
+  if (dataIndex === 'description') return t('common.description')
+  return dataIndex
 }
 
 // ────────────────── Column Search (shared) ──────────────────
@@ -71,6 +74,7 @@ function ColumnSearch({
   onApply: (dataIndex: string, value: string) => void
   onReset: (dataIndex: string) => void
 }) {
+  const { t } = useTranslation()
   const [localValue, setLocalValue] = useState(appliedValue)
   const inputRef = useRef<InputRef>(null)
   const { close } = filterDropdownProps
@@ -86,7 +90,7 @@ function ColumnSearch({
     <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
       <Input
         ref={inputRef}
-        placeholder={`Search ${COLUMN_LABELS[dataIndex] ?? dataIndex}`}
+        placeholder={t('common.searchColumn', { column: columnLabel(dataIndex, t) })}
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         onPressEnter={() => { onApply(dataIndex, localValue); close() }}
@@ -100,13 +104,13 @@ function ColumnSearch({
           size="small"
           onClick={() => { onApply(dataIndex, localValue); close() }}
         >
-          Search
+          {t('common.search')}
         </Button>
         <Button
           size="small"
           onClick={() => { onReset(dataIndex); close() }}
         >
-          Reset
+          {t('common.reset')}
         </Button>
       </Space>
     </div>
@@ -127,6 +131,7 @@ function KeyValueEditor({
   value: KvRow[]
   onChange: (rows: KvRow[]) => void
 }) {
+  const { t } = useTranslation()
   const updateRow = (id: string, field: 'key' | 'value', val: string) => {
     onChange(value.map((r) => (r._clientId === id ? { ...r, [field]: val } : r)))
   }
@@ -143,14 +148,14 @@ function KeyValueEditor({
         <div key={row._clientId} style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
           <Input
             size="small"
-            placeholder="Header name"
+            placeholder={t('pages.webhooks.headerNamePlaceholder')}
             value={row.key}
             onChange={(e) => updateRow(row._clientId, 'key', e.target.value)}
             style={{ flex: 1 }}
           />
           <Input
             size="small"
-            placeholder="Value"
+            placeholder={t('pages.webhooks.valuePlaceholder')}
             value={row.value}
             onChange={(e) => updateRow(row._clientId, 'value', e.target.value)}
             style={{ flex: 1 }}
@@ -165,7 +170,7 @@ function KeyValueEditor({
         </div>
       ))}
       <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={addRow} style={{ marginTop: 4 }}>
-        Add Header
+        {t('pages.webhooks.addHeader')}
       </Button>
     </div>
   )
@@ -173,12 +178,15 @@ function KeyValueEditor({
 
 // ────────────────── Condition Type Options ──────────────────
 
-const CONDITION_TYPE_OPTIONS: { value: WebhookConditionType; label: string }[] = [
-  { value: 'HEADER', label: 'Header' },
-  { value: 'QUERY_PARAM', label: 'Query Param' },
-  { value: 'BODY_JSON_PATH', label: 'Body JSON Path' },
-  { value: 'REQUEST_PATH', label: 'Request Path' },
-]
+function useConditionTypeOptions() {
+  const { t } = useTranslation()
+  return [
+    { value: 'HEADER' as WebhookConditionType, label: t('pages.webhooks.conditionHeader') },
+    { value: 'QUERY_PARAM' as WebhookConditionType, label: t('pages.webhooks.conditionQueryParam') },
+    { value: 'BODY_JSON_PATH' as WebhookConditionType, label: t('pages.webhooks.conditionBodyJsonPath') },
+    { value: 'REQUEST_PATH' as WebhookConditionType, label: t('pages.webhooks.conditionRequestPath') },
+  ]
+}
 
 // ────────────────── Response Rules Editor ──────────────────
 
@@ -253,6 +261,8 @@ function ResponseRulesEditor({
   initialRules: WebhookResponseRuleDto[]
   onSaved: (webhook: Webhook) => void
 }) {
+  const { t } = useTranslation()
+  const conditionTypeOptions = useConditionTypeOptions()
   const [rules, setRules] = useState<RuleEditorRow[]>(() => toRuleEditorRows(initialRules))
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -330,7 +340,7 @@ function ResponseRulesEditor({
     // Validate: all rules must have names
     for (const rule of rules) {
       if (!rule.name.trim()) {
-        message.error('All rules must have a name')
+        message.error(t('pages.webhooks.allRulesMustHaveName'))
         return
       }
     }
@@ -340,23 +350,25 @@ function ResponseRulesEditor({
       const wh = await webhookApi.updateResponseRules(webhookId, dtos)
       onSaved(wh)
       setDirty(false)
-      message.success('Response rules saved')
+      message.success(t('pages.webhooks.responseRulesSaved'))
     } catch (err: any) {
       if (err?.response?.data?.error) message.error(err.response.data.error)
-      else message.error('Failed to save rules')
+      else message.error(t('pages.webhooks.failedSaveRules'))
     } finally {
       setSaving(false)
     }
   }
 
   const conditionSummary = (conditions: ConditionRow[]) => {
-    if (conditions.length === 0) return 'No conditions (always matches)'
+    if (conditions.length === 0) return t('pages.webhooks.noConditions')
     return conditions
       .filter((c) => c.matchKey.trim())
       .map((c) => {
-        const typeLabel = CONDITION_TYPE_OPTIONS.find((o) => o.value === c.conditionType)?.label || c.conditionType
-        if (c.conditionType === 'REQUEST_PATH') return `Path: ${c.matchKey}`
-        return c.matchValue ? `${typeLabel}: ${c.matchKey} = ${c.matchValue}` : `${typeLabel}: ${c.matchKey} exists`
+        const typeLabel = conditionTypeOptions.find((o) => o.value === c.conditionType)?.label || c.conditionType
+        if (c.conditionType === 'REQUEST_PATH') return t('pages.webhooks.pathCondition', { key: c.matchKey })
+        return c.matchValue
+          ? t('pages.webhooks.conditionEquals', { type: typeLabel, key: c.matchKey, value: c.matchValue })
+          : t('pages.webhooks.conditionExists', { type: typeLabel, key: c.matchKey })
       })
       .join(' AND ')
   }
@@ -376,22 +388,22 @@ function ResponseRulesEditor({
           borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 11, fontWeight: 600,
         }}>C</div>
-        <Text strong style={{ fontSize: 12 }}>Response Rules</Text>
-        <Tag style={{ fontSize: 11 }}>{rules.length} rule{rules.length !== 1 ? 's' : ''}</Tag>
+        <Text strong style={{ fontSize: 12 }}>{t('pages.webhooks.responseRules')}</Text>
+        <Tag style={{ fontSize: 11 }}>{t('pages.webhooks.rulesCount', { count: rules.length })}</Tag>
         <div style={{ flex: 1 }} />
         {dirty && (
           <Button size="small" type="primary" loading={saving} onClick={handleSave}>
-            Save Rules
+            {t('pages.webhooks.saveRules')}
           </Button>
         )}
         <Button size="small" type="dashed" icon={<PlusOutlined />} onClick={addRule}>
-          Add Rule
+          {t('pages.webhooks.addRule')}
         </Button>
       </div>
 
       {rules.length === 0 && (
         <Text type="secondary" style={{ fontSize: 12, display: 'block', padding: '4px 0' }}>
-          No response rules. All requests will use the default response above.
+          {t('pages.webhooks.noResponseRules')}
         </Text>
       )}
 
@@ -402,9 +414,9 @@ function ResponseRulesEditor({
           label: (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
               <HolderOutlined style={{ color: '#bfbfbf', cursor: 'grab' }} />
-              <Text strong style={{ fontSize: 12 }}>{rule.name || <Text type="secondary" italic>Untitled Rule</Text>}</Text>
+              <Text strong style={{ fontSize: 12 }}>{rule.name || <Text type="secondary" italic>{t('pages.webhooks.untitledRule')}</Text>}</Text>
               <Tag color={rule.enabled ? 'green' : 'default'} style={{ fontSize: 10 }}>
-                {rule.enabled ? 'Enabled' : 'Disabled'}
+                {rule.enabled ? t('common.enabled') : t('common.disabled')}
               </Tag>
               <Tag style={{ fontSize: 10 }}>{rule.responseStatus}</Tag>
               <Text type="secondary" style={{ fontSize: 11, flex: 1 }} ellipsis>
@@ -419,7 +431,7 @@ function ResponseRulesEditor({
                 checked={rule.enabled}
                 onChange={(v) => updateRule(rule._clientId, { enabled: v })}
               />
-              <Popconfirm title="Delete this rule?" okType="danger" onConfirm={() => removeRule(rule._clientId)}>
+              <Popconfirm title={t('pages.webhooks.deleteRuleConfirm')} okType="danger" onConfirm={() => removeRule(rule._clientId)}>
                 <Button size="small" type="text" danger icon={<DeleteOutlined />} />
               </Popconfirm>
             </Space>
@@ -430,18 +442,18 @@ function ResponseRulesEditor({
               <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ textTransform: 'uppercase', color: '#8c8c8c', fontSize: 11, fontWeight: 500, letterSpacing: 0.3, marginBottom: 4 }}>
-                    RULE NAME
+                    {t('pages.webhooks.ruleName')}
                   </div>
                   <Input
                     size="small"
-                    placeholder="e.g. Error Response"
+                    placeholder={t('pages.webhooks.ruleNamePlaceholder')}
                     value={rule.name}
                     onChange={(e) => updateRule(rule._clientId, { name: e.target.value })}
                   />
                 </div>
                 <div>
                   <div style={{ textTransform: 'uppercase', color: '#8c8c8c', fontSize: 11, fontWeight: 500, letterSpacing: 0.3, marginBottom: 4 }}>
-                    STATUS CODE
+                    {t('pages.webhooks.statusCode')}
                   </div>
                   <InputNumber
                     size="small"
@@ -456,20 +468,20 @@ function ResponseRulesEditor({
 
               {/* Response Body */}
               <div style={{ textTransform: 'uppercase', color: '#8c8c8c', fontSize: 11, fontWeight: 500, letterSpacing: 0.3, marginBottom: 4 }}>
-                RESPONSE BODY
+                {t('pages.webhooks.responseBody')}
               </div>
               <Input.TextArea
                 size="small"
                 rows={2}
                 value={rule.responseBody}
                 onChange={(e) => updateRule(rule._clientId, { responseBody: e.target.value })}
-                placeholder='e.g. {"error":"bad request"}'
+                placeholder={t('pages.webhooks.ruleBodyPlaceholder')}
                 style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 8 }}
               />
 
               {/* Response Headers */}
               <div style={{ textTransform: 'uppercase', color: '#8c8c8c', fontSize: 11, fontWeight: 500, letterSpacing: 0.3, marginBottom: 4 }}>
-                RESPONSE HEADERS
+                {t('pages.webhooks.responseHeaders')}
               </div>
               <KeyValueEditor
                 value={rule.responseHeaders}
@@ -481,10 +493,10 @@ function ResponseRulesEditor({
                 textTransform: 'uppercase', color: '#8c8c8c', fontSize: 11, fontWeight: 500,
                 letterSpacing: 0.3, marginTop: 12, marginBottom: 4,
               }}>
-                CONDITIONS ({rule.conditions.length})
+                {t('pages.webhooks.conditions', { count: rule.conditions.length })}
               </div>
               <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
-                All conditions must match (AND logic). Leave value empty to check existence only.
+                {t('pages.webhooks.conditionsHint')}
               </Text>
 
               {rule.conditions.map((cond) => (
@@ -493,15 +505,15 @@ function ResponseRulesEditor({
                     size="small"
                     value={cond.conditionType}
                     onChange={(v) => updateCondition(rule._clientId, cond._clientId, { conditionType: v })}
-                    options={CONDITION_TYPE_OPTIONS}
+                    options={conditionTypeOptions}
                     style={{ width: 140 }}
                   />
                   <Input
                     size="small"
                     placeholder={
-                      cond.conditionType === 'BODY_JSON_PATH' ? '$.data.type'
-                        : cond.conditionType === 'REQUEST_PATH' ? '/api/v1/test'
-                          : 'key name'
+                      cond.conditionType === 'BODY_JSON_PATH' ? t('pages.webhooks.bodyJsonPathPlaceholder')
+                        : cond.conditionType === 'REQUEST_PATH' ? t('pages.webhooks.requestPathPlaceholder')
+                          : t('pages.webhooks.keyNamePlaceholder')
                     }
                     value={cond.matchKey}
                     onChange={(e) => updateCondition(rule._clientId, cond._clientId, { matchKey: e.target.value })}
@@ -509,7 +521,7 @@ function ResponseRulesEditor({
                   />
                   <Input
                     size="small"
-                    placeholder={cond.conditionType === 'REQUEST_PATH' ? '(not used)' : 'expected value (optional)'}
+                    placeholder={cond.conditionType === 'REQUEST_PATH' ? t('pages.webhooks.notUsed') : t('pages.webhooks.expectedValueOptional')}
                     disabled={cond.conditionType === 'REQUEST_PATH'}
                     value={cond.matchValue}
                     onChange={(e) => updateCondition(rule._clientId, cond._clientId, { matchValue: e.target.value })}
@@ -532,7 +544,7 @@ function ResponseRulesEditor({
                 onClick={() => addCondition(rule._clientId)}
                 style={{ marginTop: 4 }}
               >
-                Add Condition
+                {t('pages.webhooks.addCondition')}
               </Button>
             </div>
           ),
@@ -545,6 +557,7 @@ function ResponseRulesEditor({
 // ────────────────── Webhook List View ──────────────────
 
 function WebhookListView() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [webhooks, setWebhooks] = useState<Webhook[]>([])
   const [loading, setLoading] = useState(true)
@@ -573,11 +586,11 @@ function WebhookListView() {
       setWebhooks(res.content)
       setTotal(res.totalElements)
     } catch {
-      message.error('Failed to load webhooks')
+      message.error(t('pages.webhooks.failedLoad'))
     } finally {
       setLoading(false)
     }
-  }, [page, sortBy, sortDir, filters])
+  }, [page, sortBy, sortDir, filters, t])
 
   useEffect(() => { load() }, [load])
 
@@ -634,10 +647,10 @@ function WebhookListView() {
       }
       if (editWebhook) {
         await webhookApi.update(editWebhook.id, data)
-        message.success('Webhook updated')
+        message.success(t('pages.webhooks.updated'))
       } else {
         await webhookApi.create(data)
-        message.success('Webhook created')
+        message.success(t('pages.webhooks.created'))
       }
       setModalOpen(false)
       load()
@@ -651,10 +664,10 @@ function WebhookListView() {
   const handleDelete = async (id: string) => {
     try {
       await webhookApi.delete(id)
-      message.success('Webhook deleted')
+      message.success(t('pages.webhooks.deleted'))
       load()
     } catch {
-      message.error('Failed to delete')
+      message.error(t('pages.webhooks.failedDelete'))
     }
   }
 
@@ -663,7 +676,7 @@ function WebhookListView() {
       await webhookApi.toggleStatus(id, enabled)
       setWebhooks((prev) => prev.map((w) => (w.id === id ? { ...w, enabled } : w)))
     } catch {
-      message.error('Failed to toggle')
+      message.error(t('pages.webhooks.failedToggle'))
     }
   }
 
@@ -673,12 +686,12 @@ function WebhookListView() {
 
   const columns = [
     {
-      title: 'S.No',
+      title: t('common.sno'),
       width: 60,
       render: (_: unknown, __: unknown, idx: number) => page * 10 + idx + 1,
     },
     {
-      title: 'Name',
+      title: t('common.name'),
       dataIndex: 'name',
       sorter: true,
       filterDropdown: (props: FilterDropdownProps) => (
@@ -699,7 +712,7 @@ function WebhookListView() {
       ),
     },
     {
-      title: 'Description',
+      title: t('common.description'),
       dataIndex: 'description',
       ellipsis: true,
       filterDropdown: (props: FilterDropdownProps) => (
@@ -716,13 +729,13 @@ function WebhookListView() {
       render: (d: string) => d || <Text type="secondary">-</Text>,
     },
     {
-      title: 'Requests',
+      title: t('pages.webhooks.columnRequests'),
       dataIndex: 'requestCount',
       width: 90,
       align: 'center' as const,
     },
     {
-      title: 'Status',
+      title: t('pages.webhooks.columnStatus'),
       dataIndex: 'enabled',
       width: 90,
       render: (enabled: boolean, w: Webhook) => (
@@ -730,22 +743,22 @@ function WebhookListView() {
       ),
     },
     {
-      title: 'Created',
+      title: t('pages.webhooks.columnCreated'),
       dataIndex: 'createdAt',
       width: 150,
       sorter: true,
-      render: (t: string) => (t ? new Date(t).toLocaleDateString() : '-'),
+      render: (t: string) => formatDate(t),
     },
     {
-      title: 'Actions',
+      title: t('common.actions'),
       width: 120,
       render: (_: unknown, w: Webhook) => (
         <Space size={4}>
           <Button size="small" type="link" onClick={() => navigate(`/webhooks/${w.id}`)}>
-            Inspect
+            {t('pages.webhooks.inspect')}
           </Button>
           <Button size="small" type="text" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(w) }} />
-          <Popconfirm title="Delete this webhook?" okType="danger" onConfirm={() => handleDelete(w.id)}>
+          <Popconfirm title={t('pages.webhooks.deleteConfirm')} okType="danger" onConfirm={() => handleDelete(w.id)}>
             <Button size="small" type="text" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -757,15 +770,15 @@ function WebhookListView() {
     <div>
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="page-header-kicker">Tools</div>
-          <h1 className="page-header-title">Webhooks</h1>
+          <div className="page-header-kicker">{t('pages.webhooks.kicker')}</div>
+          <h1 className="page-header-title">{t('pages.webhooks.title')}</h1>
           <p className="page-header-desc">
-            Capture inbound callbacks and inspect payloads while suites run.
+            {t('pages.webhooks.description')}
           </p>
         </div>
         <div className="page-header-actions">
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            New Webhook
+            {t('pages.webhooks.newWebhook')}
           </Button>
         </div>
       </div>
@@ -784,59 +797,59 @@ function WebhookListView() {
             total,
             onChange: (p) => setPage(p - 1),
             showSizeChanger: false,
-            showTotal: (t) => `${t} total`,
+            showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
             size: 'small',
           }}
         />
       </div>
 
       <Modal
-        title={editWebhook ? 'Edit Webhook' : 'New Webhook'}
+        title={editWebhook ? t('pages.webhooks.editWebhook') : t('pages.webhooks.newWebhook')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSave}
         confirmLoading={saving}
-        okText={editWebhook ? 'Save' : 'Create'}
+        okText={editWebhook ? t('common.save') : t('common.create')}
         width={520}
       >
         <Form form={form} layout="vertical" requiredMark="optional">
           <Form.Item
             name="name"
-            label="Name"
-            rules={[{ required: true, message: 'Name is required' }]}
-            extra="Used in the list and when referencing this endpoint."
+            label={t('common.name')}
+            rules={[{ required: true, message: t('components.suiteExplorer.nameRequired') }]}
+            extra={t('pages.webhooks.nameExtra')}
           >
-            <Input placeholder="e.g. Payment Callback" autoFocus />
+            <Input placeholder={t('pages.webhooks.namePlaceholder')} autoFocus />
           </Form.Item>
-          <Form.Item name="description" label="Description" extra="Optional context for teammates.">
+          <Form.Item name="description" label={t('common.description')} extra={t('components.suiteExplorer.descriptionExtra')}>
             <Input.TextArea
               rows={2}
-              placeholder="What system calls this webhook?"
+              placeholder={t('pages.webhooks.descriptionPlaceholder')}
               autoSize={{ minRows: 2, maxRows: 4 }}
             />
           </Form.Item>
           <div className="form-grid-2">
             <Form.Item
               name="defaultResponseStatus"
-              label="Default Response Status"
-              extra="Returned when no rule matches."
+              label={t('pages.webhooks.defaultResponseStatus')}
+              extra={t('pages.webhooks.defaultResponseStatusExtra')}
             >
               <InputNumber min={100} max={599} style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item
               className="form-span-2"
               name="defaultResponseBody"
-              label="Default Response Body"
+              label={t('pages.webhooks.defaultResponseBody')}
             >
               <Input.TextArea
                 rows={3}
-                placeholder='e.g. {"status":"ok"}'
+                placeholder={t('pages.webhooks.defaultResponseBodyPlaceholder')}
                 style={{ fontFamily: 'monospace', fontSize: 12 }}
               />
             </Form.Item>
           </div>
           <div style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 12, fontWeight: 560, color: '#475569' }}>Response Headers</Text>
+            <Text style={{ fontSize: 12, fontWeight: 560, color: '#475569' }}>{t('pages.webhooks.responseHeaders')}</Text>
           </div>
           <KeyValueEditor value={modalHeaders} onChange={setModalHeaders} />
         </Form>
@@ -848,6 +861,7 @@ function WebhookListView() {
 // ────────────────── Webhook Detail View ──────────────────
 
 function WebhookDetailView({ webhookId }: { webhookId: string }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [webhook, setWebhook] = useState<Webhook | null>(null)
   const [webhookUrl, setWebhookUrl] = useState('')
@@ -886,11 +900,11 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
         (wh.defaultResponseHeaders || []).map((h) => ({ _clientId: genKvId(), key: h.key, value: h.value })),
       )
     } catch {
-      message.error('Failed to load webhook')
+      message.error(t('pages.webhooks.failedLoadWebhook'))
     } finally {
       setLoading(false)
     }
-  }, [webhookId])
+  }, [webhookId, t])
 
   const loadRequests = useCallback(async (page = 0) => {
     setReqLoading(true)
@@ -900,11 +914,11 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
       setReqTotal(res.totalElements)
       setReqPage(page)
     } catch {
-      message.error('Failed to load requests')
+      message.error(t('pages.webhooks.failedLoadRequests'))
     } finally {
       setReqLoading(false)
     }
-  }, [webhookId])
+  }, [webhookId, t])
 
   useEffect(() => {
     loadWebhook()
@@ -940,9 +954,9 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
     try {
       const wh = await webhookApi.toggleStatus(webhookId, enabled)
       setWebhook(wh)
-      message.success(enabled ? 'Webhook enabled' : 'Webhook disabled')
+      message.success(enabled ? t('pages.webhooks.enabledSuccess') : t('pages.webhooks.disabledSuccess'))
     } catch {
-      message.error('Failed to toggle')
+      message.error(t('pages.webhooks.failedToggle'))
     } finally {
       setToggling(false)
     }
@@ -954,9 +968,9 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
       setRequests([])
       setReqTotal(0)
       setSelectedReq(null)
-      message.success('Requests cleared')
+      message.success(t('pages.webhooks.requestsCleared'))
     } catch {
-      message.error('Failed to clear requests')
+      message.error(t('pages.webhooks.failedClearRequests'))
     }
   }
 
@@ -976,10 +990,10 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
       const wh = await webhookApi.update(webhookId, data)
       setWebhook(wh)
       setEditingResponse(false)
-      message.success('Response config saved')
+      message.success(t('pages.webhooks.responseConfigSaved'))
     } catch (err: any) {
       if (err?.response?.data?.error) message.error(err.response.data.error)
-      else message.error('Failed to save')
+      else message.error(t('pages.webhooks.failedSave'))
     } finally {
       setSavingResp(false)
     }
@@ -987,12 +1001,12 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
 
   const copyUrl = () => {
     navigator.clipboard.writeText(webhookUrl)
-    message.success('URL copied')
+    message.success(t('pages.webhooks.urlCopied'))
   }
 
   const reqColumns = [
     {
-      title: 'Method',
+      title: t('pages.webhooks.columnMethod'),
       dataIndex: 'httpMethod',
       width: 70,
       render: (m: string) => (
@@ -1000,46 +1014,46 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
       ),
     },
     {
-      title: 'Path',
+      title: t('pages.webhooks.columnPath'),
       dataIndex: 'requestPath',
       ellipsis: true,
       render: (p: string) => <Text code style={{ fontSize: 11 }}>{p}</Text>,
     },
     {
-      title: 'IP',
+      title: t('pages.webhooks.columnIp'),
       dataIndex: 'sourceIp',
       width: 120,
       ellipsis: true,
       render: (ip: string) => <Text type="secondary" style={{ fontSize: 11 }}>{ip || '-'}</Text>,
     },
     {
-      title: 'Time',
+      title: t('pages.webhooks.columnTime'),
       dataIndex: 'createdAt',
       width: 140,
       render: (t: string) => (
         <Text type="secondary" style={{ fontSize: 11 }}>
-          {t ? new Date(t).toLocaleTimeString() : '-'}
+          {formatTime(t)}
         </Text>
       ),
     },
   ]
 
-  if (loading) return <div style={{ padding: 20, textAlign: 'center' }}>Loading...</div>
+  if (loading) return <div style={{ padding: 20, textAlign: 'center' }}>{t('common.loading')}</div>
 
   return (
     <div>
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/webhooks')} type="text" size="small" />
-        <Title level={5} className="page-title">{webhook?.name || 'Webhook'}</Title>
+        <Title level={5} className="page-title">{webhook?.name || t('pages.webhooks.fallbackTitle')}</Title>
         {webhook?.description && <Text type="secondary" style={{ fontSize: 12 }}>— {webhook.description}</Text>}
         <div style={{ flex: 1 }} />
         <Space size="middle">
           {/* Live indicator */}
-          <Tooltip title={sseConnected ? 'Live — receiving requests in real-time' : 'Disconnected'}>
+          <Tooltip title={sseConnected ? t('pages.webhooks.liveTooltip') : t('pages.webhooks.disconnectedTooltip')}>
             <Badge
               status={sseConnected ? 'processing' : 'default'}
-              text={<Text style={{ fontSize: 12 }}>{sseConnected ? 'Live' : 'Offline'}</Text>}
+              text={<Text style={{ fontSize: 12 }}>{sseConnected ? t('pages.webhooks.live') : t('pages.webhooks.offline')}</Text>}
             />
           </Tooltip>
 
@@ -1056,7 +1070,7 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
           </div>
 
           <Space size={4}>
-            <Text style={{ fontSize: 12 }}>Enabled</Text>
+            <Text style={{ fontSize: 12 }}>{t('common.enabled')}</Text>
             <Switch size="small" checked={webhook?.enabled} onChange={handleToggle} loading={toggling} />
           </Space>
         </Space>
@@ -1077,12 +1091,12 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
             borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 11, fontWeight: 600,
           }}>R</div>
-          <Text strong style={{ fontSize: 12 }}>Response Config</Text>
+          <Text strong style={{ fontSize: 12 }}>{t('pages.webhooks.responseConfig')}</Text>
           <Tag style={{ fontSize: 11 }}>{webhook?.defaultResponseStatus || 200}</Tag>
           <div style={{ flex: 1 }} />
           {!editingResponse && (
             <Button size="small" type="link" onClick={() => setEditingResponse(true)}>
-              Edit
+              {t('common.edit')}
             </Button>
           )}
         </div>
@@ -1091,24 +1105,24 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
             <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
               <div>
                 <div style={{ textTransform: 'uppercase', color: '#8c8c8c', fontSize: 11, fontWeight: 500, letterSpacing: 0.3, marginBottom: 4 }}>
-                  STATUS CODE
+                  {t('pages.webhooks.statusCode')}
                 </div>
                 <InputNumber size="small" min={100} max={599} value={respStatus} onChange={(v) => setRespStatus(v || 200)} style={{ width: 100 }} />
               </div>
             </div>
             <div style={{ textTransform: 'uppercase', color: '#8c8c8c', fontSize: 11, fontWeight: 500, letterSpacing: 0.3, marginBottom: 4 }}>
-              RESPONSE BODY
+              {t('pages.webhooks.responseBody')}
             </div>
             <Input.TextArea
               size="small"
               rows={3}
               value={respBody}
               onChange={(e) => setRespBody(e.target.value)}
-              placeholder='e.g. {"status":"ok"}'
+              placeholder={t('pages.webhooks.defaultResponseBodyPlaceholder')}
               style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 8 }}
             />
             <div style={{ textTransform: 'uppercase', color: '#8c8c8c', fontSize: 11, fontWeight: 500, letterSpacing: 0.3, marginBottom: 4 }}>
-              RESPONSE HEADERS
+              {t('pages.webhooks.responseHeaders')}
             </div>
             <KeyValueEditor value={respHeaders} onChange={setRespHeaders} />
             <div style={{ marginTop: 10, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -1122,10 +1136,10 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
                   )
                 }
               }}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button size="small" type="primary" loading={savingResp} onClick={handleSaveResponse}>
-                Save Response Config
+                {t('pages.webhooks.saveResponseConfig')}
               </Button>
             </div>
           </div>
@@ -1146,13 +1160,13 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
         {/* Left: Request list (40%) */}
         <div style={{ flex: '0 0 40%', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <Text strong style={{ fontSize: 12 }}>Incoming Requests</Text>
+            <Text strong style={{ fontSize: 12 }}>{t('pages.webhooks.incomingRequests')}</Text>
             <Space size={4}>
               <Button size="small" icon={<ReloadOutlined />} onClick={() => loadRequests(reqPage)}>
-                Refresh
+                {t('pages.webhooks.refresh')}
               </Button>
-              <Popconfirm title="Clear all requests?" okType="danger" onConfirm={handleClearRequests}>
-                <Button size="small" danger icon={<ClearOutlined />}>Clear</Button>
+              <Popconfirm title={t('pages.webhooks.clearRequestsConfirm')} okType="danger" onConfirm={handleClearRequests}>
+                <Button size="small" danger icon={<ClearOutlined />}>{t('pages.webhooks.clear')}</Button>
               </Popconfirm>
             </Space>
           </div>
@@ -1176,7 +1190,7 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
               onChange: (p) => loadRequests(p - 1),
               showSizeChanger: false,
               size: 'small',
-              showTotal: (t) => `${t} total`,
+              showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
             }}
           />
         </div>
@@ -1194,7 +1208,7 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
             <RequestDetail log={selectedReq} />
           ) : (
             <Empty
-              description="Select a request to view details"
+              description={t('pages.webhooks.selectRequestHint')}
               style={{ paddingTop: 80 }}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
@@ -1208,6 +1222,7 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
 // ────────────────── Request Detail ──────────────────
 
 function RequestDetail({ log }: { log: WebhookRequestLog }) {
+  const { t } = useTranslation()
   const sectionLabel: React.CSSProperties = {
     textTransform: 'uppercase',
     color: '#8c8c8c',
@@ -1264,9 +1279,9 @@ function RequestDetail({ log }: { log: WebhookRequestLog }) {
         </Tag>
         <Text code style={{ fontSize: 12 }}>{log.requestPath}</Text>
         <div style={{ flex: 1 }} />
-        {log.sourceIp && <Text type="secondary" style={{ fontSize: 11 }}>from {log.sourceIp}</Text>}
+        {log.sourceIp && <Text type="secondary" style={{ fontSize: 11 }}>{t('pages.webhooks.fromIp', { ip: log.sourceIp })}</Text>}
         <Text type="secondary" style={{ fontSize: 11 }}>
-          {log.createdAt ? new Date(log.createdAt).toLocaleString() : ''}
+          {formatDateTime(log.createdAt, '')}
         </Text>
       </div>
 
@@ -1276,7 +1291,7 @@ function RequestDetail({ log }: { log: WebhookRequestLog }) {
           {log.contentLength != null && log.contentLength > 0 && (
             <Tag style={{ fontSize: 10 }}>{formatBytes(log.contentLength)}</Tag>
           )}
-          {log.multipart && <Tag color="blue" style={{ fontSize: 10 }}>Multipart</Tag>}
+          {log.multipart && <Tag color="blue" style={{ fontSize: 10 }}>{t('pages.webhooks.multipart')}</Tag>}
         </div>
       )}
 
@@ -1284,21 +1299,21 @@ function RequestDetail({ log }: { log: WebhookRequestLog }) {
       <div style={{ marginTop: 6 }}>
         {log.matchedRuleName ? (
           <Tag color="purple" icon={<CheckCircleOutlined />} style={{ fontSize: 10 }}>
-            Matched: {log.matchedRuleName}
+            {t('pages.webhooks.matchedRule', { name: log.matchedRuleName })}
           </Tag>
         ) : (
-          <Tag style={{ fontSize: 10 }}>Default Response</Tag>
+          <Tag style={{ fontSize: 10 }}>{t('pages.webhooks.defaultResponse')}</Tag>
         )}
       </div>
 
       {/* REQUEST HEADERS */}
-      <div style={sectionLabel}>REQUEST HEADERS</div>
+      <div style={sectionLabel}>{t('pages.webhooks.sectionRequestHeaders')}</div>
       <div style={codeBlock}>{parseJson(log.requestHeaders)}</div>
 
       {/* QUERY PARAMS */}
       {log.queryParams && log.queryParams !== '{}' && (
         <>
-          <div style={sectionLabel}>QUERY PARAMS</div>
+          <div style={sectionLabel}>{t('pages.webhooks.sectionQueryParams')}</div>
           <div style={codeBlock}>{parseJson(log.queryParams)}</div>
         </>
       )}
@@ -1306,18 +1321,18 @@ function RequestDetail({ log }: { log: WebhookRequestLog }) {
       {/* REQUEST BODY */}
       {log.requestBody && (
         <>
-          <div style={sectionLabel}>REQUEST BODY</div>
+          <div style={sectionLabel}>{t('pages.webhooks.sectionRequestBody')}</div>
           {isBinaryBody ? (
             <div style={{ ...codeBlock, textAlign: 'center' }}>
               {isImage ? (
                 <img
                   src={`data:${log.contentType};base64,${log.requestBody}`}
-                  alt="Request body"
+                  alt={t('pages.webhooks.requestBodyAlt')}
                   style={{ maxWidth: '100%', maxHeight: 250, borderRadius: 4 }}
                 />
               ) : (
                 <Text type="secondary">
-                  Binary ({log.contentType}) — {log.requestBody.length} chars base64
+                  {t('pages.webhooks.binaryBody', { contentType: log.contentType, length: log.requestBody.length })}
                 </Text>
               )}
             </div>
@@ -1330,28 +1345,28 @@ function RequestDetail({ log }: { log: WebhookRequestLog }) {
       {/* FILES (multipart) */}
       {files.length > 0 && (
         <>
-          <div style={sectionLabel}>FILES ({files.length})</div>
+          <div style={sectionLabel}>{t('pages.webhooks.sectionFiles', { count: files.length })}</div>
           <Table
             dataSource={files}
             rowKey={(_, idx) => String(idx)}
             size="small"
             pagination={false}
             columns={[
-              { title: 'Filename', dataIndex: 'filename', ellipsis: true },
-              { title: 'Type', dataIndex: 'contentType', width: 150 },
+              { title: t('pages.webhooks.columnFilename'), dataIndex: 'filename', ellipsis: true },
+              { title: t('pages.webhooks.columnType'), dataIndex: 'contentType', width: 150 },
               {
-                title: 'Size',
+                title: t('pages.webhooks.columnSize'),
                 dataIndex: 'size',
                 width: 80,
                 render: (s: number) => formatBytes(s),
               },
               {
-                title: 'Actions',
+                title: t('common.actions'),
                 width: 100,
                 render: (_: unknown, file: { filename: string; contentType: string; size: number; contentBase64: string }) => (
                   <Space size={4}>
                     {file.contentType?.startsWith('image/') && (
-                      <Tooltip title="Preview">
+                      <Tooltip title={t('pages.webhooks.preview')}>
                         <Button
                           size="small"
                           type="text"
@@ -1360,13 +1375,13 @@ function RequestDetail({ log }: { log: WebhookRequestLog }) {
                             const w = window.open('')
                             if (w) {
                               w.document.write(`<img src="data:${file.contentType};base64,${file.contentBase64}" style="max-width:100%" />`)
-                              w.document.title = file.filename || 'Preview'
+                              w.document.title = file.filename || t('pages.webhooks.preview')
                             }
                           }}
                         />
                       </Tooltip>
                     )}
-                    <Tooltip title="Download">
+                    <Tooltip title={t('pages.webhooks.download')}>
                       <Button
                         size="small"
                         type="text"
@@ -1397,8 +1412,8 @@ function RequestDetail({ log }: { log: WebhookRequestLog }) {
       )}
 
       {/* RESPONSE */}
-      <div style={sectionLabel}>RESPONSE (STATUS {log.responseStatus})</div>
-      <div style={codeBlock}>{log.responseBody ? parseJson(log.responseBody) : <Text type="secondary">Empty body</Text>}</div>
+      <div style={sectionLabel}>{t('pages.webhooks.sectionResponse', { status: log.responseStatus })}</div>
+      <div style={codeBlock}>{log.responseBody ? parseJson(log.responseBody) : <Text type="secondary">{t('pages.webhooks.emptyBody')}</Text>}</div>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Table,
   Button,
@@ -34,6 +35,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { MockServer, MockEndpoint, MockRequestLog, MockServerStatus } from '../types/mock'
 import { mockApi } from '../services/mockApi'
 import MockEndpointEditor from '../components/MockEndpointEditor'
+import { formatDate, formatDateTime } from '../utils/datetime'
 
 const { Title, Text } = Typography
 
@@ -46,9 +48,10 @@ const METHOD_COLORS: Record<string, string> = {
   ANY: '#8c8c8c',
 }
 
-const COLUMN_LABELS: Record<string, string> = {
-  name: 'Name',
-  description: 'Description',
+function columnLabel(dataIndex: string, t: (key: string) => string): string {
+  if (dataIndex === 'name') return t('common.name')
+  if (dataIndex === 'description') return t('common.description')
+  return dataIndex
 }
 
 // ────────────────── Column Search (shared) ──────────────────
@@ -65,6 +68,7 @@ function ColumnSearch({
   onApply: (dataIndex: string, value: string) => void
   onReset: (dataIndex: string) => void
 }) {
+  const { t } = useTranslation()
   const [localValue, setLocalValue] = useState(appliedValue)
   const inputRef = useRef<InputRef>(null)
   const { close } = filterDropdownProps
@@ -80,7 +84,7 @@ function ColumnSearch({
     <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
       <Input
         ref={inputRef}
-        placeholder={`Search ${COLUMN_LABELS[dataIndex] ?? dataIndex}`}
+        placeholder={t('common.searchColumn', { column: columnLabel(dataIndex, t) })}
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         onPressEnter={() => { onApply(dataIndex, localValue); close() }}
@@ -94,13 +98,13 @@ function ColumnSearch({
           size="small"
           onClick={() => { onApply(dataIndex, localValue); close() }}
         >
-          Search
+          {t('common.search')}
         </Button>
         <Button
           size="small"
           onClick={() => { onReset(dataIndex); close() }}
         >
-          Reset
+          {t('common.reset')}
         </Button>
       </Space>
     </div>
@@ -110,6 +114,7 @@ function ColumnSearch({
 // ────────────────── Mock Server List View ──────────────────
 
 function ServerListView() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [servers, setServers] = useState<MockServer[]>([])
   const [loading, setLoading] = useState(true)
@@ -137,11 +142,11 @@ function ServerListView() {
       setServers(res.content)
       setTotal(res.totalElements)
     } catch {
-      message.error('Failed to load mock servers')
+      message.error(t('pages.mockServer.failedLoad'))
     } finally {
       setLoading(false)
     }
-  }, [page, sortBy, sortDir, filters])
+  }, [page, sortBy, sortDir, filters, t])
 
   useEffect(() => { load() }, [load])
 
@@ -179,10 +184,10 @@ function ServerListView() {
       setSaving(true)
       if (editServer) {
         await mockApi.updateServer(editServer.id, values)
-        message.success('Mock server updated')
+        message.success(t('pages.mockServer.updated'))
       } else {
         await mockApi.createServer(values)
-        message.success('Mock server created')
+        message.success(t('pages.mockServer.created'))
       }
       setModalOpen(false)
       load()
@@ -196,10 +201,10 @@ function ServerListView() {
   const handleDelete = async (id: string) => {
     try {
       await mockApi.deleteServer(id)
-      message.success('Mock server deleted')
+      message.success(t('pages.mockServer.deleted'))
       load()
     } catch {
-      message.error('Failed to delete')
+      message.error(t('pages.mockServer.failedDelete'))
     }
   }
 
@@ -208,7 +213,7 @@ function ServerListView() {
       await mockApi.toggleStatus(id, enabled)
       setServers((prev) => prev.map((s) => s.id === id ? { ...s, enabled } : s))
     } catch {
-      message.error('Failed to toggle')
+      message.error(t('pages.mockServer.failedToggle'))
     }
   }
 
@@ -218,12 +223,12 @@ function ServerListView() {
 
   const columns = [
     {
-      title: 'S.No',
+      title: t('common.sno'),
       width: 60,
       render: (_: unknown, __: unknown, idx: number) => page * 10 + idx + 1,
     },
     {
-      title: 'Name',
+      title: t('common.name'),
       dataIndex: 'name',
       sorter: true,
       filterDropdown: (props: FilterDropdownProps) => (
@@ -244,7 +249,7 @@ function ServerListView() {
       ),
     },
     {
-      title: 'Description',
+      title: t('common.description'),
       dataIndex: 'description',
       ellipsis: true,
       filterDropdown: (props: FilterDropdownProps) => (
@@ -261,13 +266,13 @@ function ServerListView() {
       render: (d: string) => d || <Text type="secondary">-</Text>,
     },
     {
-      title: 'Endpoints',
+      title: t('pages.mockServer.columnEndpoints'),
       dataIndex: 'endpointCount',
       width: 90,
       align: 'center' as const,
     },
     {
-      title: 'Status',
+      title: t('pages.mockServer.columnStatus'),
       dataIndex: 'enabled',
       width: 90,
       render: (enabled: boolean, s: MockServer) => (
@@ -275,22 +280,22 @@ function ServerListView() {
       ),
     },
     {
-      title: 'Created',
+      title: t('pages.mockServer.columnCreated'),
       dataIndex: 'createdAt',
       width: 150,
       sorter: true,
-      render: (t: string) => t ? new Date(t).toLocaleDateString() : '-',
+      render: (t: string) => formatDate(t),
     },
     {
-      title: 'Actions',
+      title: t('common.actions'),
       width: 120,
       render: (_: unknown, s: MockServer) => (
         <Space size={4}>
           <Button size="small" type="link" onClick={() => navigate(`/mock-server/${s.id}`)}>
-            Configure
+            {t('pages.mockServer.configure')}
           </Button>
           <Button size="small" type="text" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(s) }} />
-          <Popconfirm title="Delete this mock server?" okType="danger" onConfirm={() => handleDelete(s.id)}>
+          <Popconfirm title={t('pages.mockServer.deleteConfirm')} okType="danger" onConfirm={() => handleDelete(s.id)}>
             <Button size="small" type="text" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -302,15 +307,15 @@ function ServerListView() {
     <div>
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="page-header-kicker">Tools</div>
-          <h1 className="page-header-title">Mock Server</h1>
+          <div className="page-header-kicker">{t('pages.mockServer.kicker')}</div>
+          <h1 className="page-header-title">{t('pages.mockServer.title')}</h1>
           <p className="page-header-desc">
-            Stand up fake HTTP services for local and staged suite runs.
+            {t('pages.mockServer.description')}
           </p>
         </div>
         <div className="page-header-actions">
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            New Mock Server
+            {t('pages.mockServer.newMockServer')}
           </Button>
         </div>
       </div>
@@ -329,34 +334,34 @@ function ServerListView() {
             total,
             onChange: (p) => setPage(p - 1),
             showSizeChanger: false,
-            showTotal: (t) => `${t} total`,
+            showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
             size: 'small',
           }}
         />
       </div>
 
       <Modal
-        title={editServer ? 'Edit Mock Server' : 'New Mock Server'}
+        title={editServer ? t('pages.mockServer.editMockServer') : t('pages.mockServer.newMockServer')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSave}
         confirmLoading={saving}
-        okText={editServer ? 'Save' : 'Create'}
+        okText={editServer ? t('common.save') : t('common.create')}
         width={440}
       >
         <Form form={form} layout="vertical" requiredMark="optional">
           <Form.Item
             name="name"
-            label="Name"
-            rules={[{ required: true, message: 'Name is required' }]}
-            extra="Shown in the list and when wiring suite steps."
+            label={t('common.name')}
+            rules={[{ required: true, message: t('components.suiteExplorer.nameRequired') }]}
+            extra={t('pages.mockServer.nameExtra')}
           >
-            <Input placeholder="e.g. Payment Service Mock" autoFocus />
+            <Input placeholder={t('pages.mockServer.namePlaceholder')} autoFocus />
           </Form.Item>
-          <Form.Item name="description" label="Description" extra="Optional context for teammates.">
+          <Form.Item name="description" label={t('common.description')} extra={t('components.suiteExplorer.descriptionExtra')}>
             <Input.TextArea
               rows={3}
-              placeholder="What does this mock stand in for?"
+              placeholder={t('pages.mockServer.descriptionPlaceholder')}
               autoSize={{ minRows: 2, maxRows: 5 }}
             />
           </Form.Item>
@@ -369,6 +374,7 @@ function ServerListView() {
 // ────────────────── Server Detail View ──────────────────
 
 function ServerDetailView({ serverId }: { serverId: string }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [server, setServer] = useState<MockServer | null>(null)
   const [status, setStatus] = useState<MockServerStatus | null>(null)
@@ -395,11 +401,11 @@ function ServerDetailView({ serverId }: { serverId: string }) {
       setStatus(st)
       setEndpoints(eps)
     } catch {
-      message.error('Failed to load mock server data')
+      message.error(t('pages.mockServer.failedLoadData'))
     } finally {
       setLoading(false)
     }
-  }, [serverId])
+  }, [serverId, t])
 
   const loadLogs = useCallback(async (page = 0) => {
     setLogsLoading(true)
@@ -409,11 +415,11 @@ function ServerDetailView({ serverId }: { serverId: string }) {
       setLogTotal(res.totalElements)
       setLogPage(page)
     } catch {
-      message.error('Failed to load request logs')
+      message.error(t('pages.mockServer.failedLoadLogs'))
     } finally {
       setLogsLoading(false)
     }
-  }, [serverId])
+  }, [serverId, t])
 
   useEffect(() => { loadAll() }, [loadAll])
 
@@ -424,9 +430,9 @@ function ServerDetailView({ serverId }: { serverId: string }) {
       setServer(srv)
       const st = await mockApi.getStatusInfo(serverId)
       setStatus(st)
-      message.success(enabled ? 'Mock server enabled' : 'Mock server disabled')
+      message.success(enabled ? t('pages.mockServer.enabledSuccess') : t('pages.mockServer.disabledSuccess'))
     } catch {
-      message.error('Failed to toggle mock server')
+      message.error(t('pages.mockServer.failedToggleServer'))
     } finally {
       setToggling(false)
     }
@@ -435,12 +441,12 @@ function ServerDetailView({ serverId }: { serverId: string }) {
   const handleDelete = async (id: string) => {
     try {
       await mockApi.deleteEndpoint(serverId, id)
-      message.success('Endpoint deleted')
+      message.success(t('pages.mockServer.endpointDeleted'))
       setEndpoints((prev) => prev.filter((e) => e.id !== id))
       const st = await mockApi.getStatusInfo(serverId)
       setStatus(st)
     } catch {
-      message.error('Failed to delete endpoint')
+      message.error(t('pages.mockServer.failedDeleteEndpoint'))
     }
   }
 
@@ -455,20 +461,20 @@ function ServerDetailView({ serverId }: { serverId: string }) {
       await mockApi.clearLogs(serverId)
       setLogs([])
       setLogTotal(0)
-      message.success('Logs cleared')
+      message.success(t('pages.mockServer.logsCleared'))
     } catch {
-      message.error('Failed to clear logs')
+      message.error(t('pages.mockServer.failedClearLogs'))
     }
   }
 
   const logColumns = [
     {
-      title: 'S.No',
+      title: t('common.sno'),
       width: 50,
       render: (_: unknown, __: unknown, idx: number) => logPage * 20 + idx + 1,
     },
     {
-      title: 'Method',
+      title: t('pages.mockServer.columnMethod'),
       dataIndex: 'httpMethod',
       width: 80,
       render: (m: string) => (
@@ -476,12 +482,12 @@ function ServerDetailView({ serverId }: { serverId: string }) {
       ),
     },
     {
-      title: 'Path',
+      title: t('pages.mockServer.columnPath'),
       dataIndex: 'requestPath',
       ellipsis: true,
     },
     {
-      title: 'Matched',
+      title: t('pages.mockServer.columnMatched'),
       dataIndex: 'matched',
       width: 80,
       render: (v: boolean) => v
@@ -489,7 +495,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
         : <CloseCircleOutlined style={{ color: '#cf1322' }} />,
     },
     {
-      title: 'Status',
+      title: t('pages.mockServer.columnStatus'),
       dataIndex: 'responseStatus',
       width: 70,
       render: (s: number) => {
@@ -498,22 +504,22 @@ function ServerDetailView({ serverId }: { serverId: string }) {
       },
     },
     {
-      title: 'Duration',
+      title: t('pages.mockServer.columnDuration'),
       dataIndex: 'durationMs',
       width: 80,
       render: (ms: number) => ms != null ? `${ms}ms` : '-',
     },
     {
-      title: 'Time',
+      title: t('pages.mockServer.columnTime'),
       dataIndex: 'createdAt',
       width: 160,
-      render: (t: string) => t ? new Date(t).toLocaleString() : '-',
+      render: (t: string) => formatDateTime(t, '-'),
     },
     {
       title: '',
       width: 50,
       render: (_: unknown, log: MockRequestLog) => (
-        <Button size="small" type="link" onClick={() => setLogDrawer(log)}>View</Button>
+        <Button size="small" type="link" onClick={() => setLogDrawer(log)}>{t('common.view')}</Button>
       ),
     },
   ]
@@ -523,7 +529,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/mock-server')} type="text" size="small" />
-        <Title level={5} className="page-title">{server?.name || 'Mock Server'}</Title>
+        <Title level={5} className="page-title">{server?.name || t('pages.mockServer.fallbackTitle')}</Title>
         {server?.description && <Text type="secondary" style={{ fontSize: 12 }}>— {server.description}</Text>}
         <div style={{ flex: 1 }} />
         {status && (
@@ -538,7 +544,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
               </Text>
             </div>
             <Space size={4}>
-              <Text style={{ fontSize: 12 }}>Enabled</Text>
+              <Text style={{ fontSize: 12 }}>{t('common.enabled')}</Text>
               <Switch
                 size="small"
                 checked={server?.enabled}
@@ -556,7 +562,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
         items={[
           {
             key: 'endpoints',
-            label: `Endpoints (${endpoints.length})`,
+            label: t('pages.mockServer.endpointsTab', { count: endpoints.length }),
             children: (
               <div>
                 <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
@@ -566,7 +572,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
                     size="small"
                     onClick={() => { setAddingNew(true); setExpandedEndpoint(null) }}
                   >
-                    Add Endpoint
+                    {t('pages.mockServer.addEndpoint')}
                   </Button>
                 </div>
 
@@ -586,7 +592,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
 
                 {endpoints.length === 0 && !addingNew ? (
                   <Empty
-                    description="No mock endpoints configured"
+                    description={t('pages.mockServer.noEndpoints')}
                     style={{
                       padding: 40, border: '1px dashed #d9d9d9', borderRadius: 6,
                       background: '#fafafa',
@@ -613,12 +619,12 @@ function ServerDetailView({ serverId }: { serverId: string }) {
                           </Tag>
                           <Text code style={{ fontSize: 12 }}>{ep.pathPattern}</Text>
                           <Text type="secondary" style={{ fontSize: 12 }}>{ep.name}</Text>
-                          {!ep.enabled && <Tag color="default">Disabled</Tag>}
+                          {!ep.enabled && <Tag color="default">{t('common.disabled')}</Tag>}
                           {ep.matchRules.length > 0 && (
-                            <Tag color="blue" style={{ fontSize: 10 }}>{ep.matchRules.length} rules</Tag>
+                            <Tag color="blue" style={{ fontSize: 10 }}>{t('pages.mockServer.rules', { count: ep.matchRules.length })}</Tag>
                           )}
                           {ep.delayMs > 0 && (
-                            <Tag color="orange" style={{ fontSize: 10 }}>{ep.delayMs}ms delay</Tag>
+                            <Tag color="orange" style={{ fontSize: 10 }}>{t('pages.mockServer.delayMs', { ms: ep.delayMs })}</Tag>
                           )}
                           <div style={{ flex: 1 }} />
                           <Tag>{ep.responseStatus}</Tag>
@@ -626,7 +632,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
                       ),
                       extra: (
                         <Popconfirm
-                          title="Delete this endpoint?"
+                          title={t('pages.mockServer.deleteEndpointConfirm')}
                           okType="danger"
                           onConfirm={(e) => { e?.stopPropagation(); handleDelete(ep.id) }}
                           onCancel={(e) => e?.stopPropagation()}
@@ -656,15 +662,15 @@ function ServerDetailView({ serverId }: { serverId: string }) {
           },
           {
             key: 'logs',
-            label: 'Request Log',
+            label: t('pages.mockServer.requestLog'),
             children: (
               <div>
                 <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                   <Button size="small" icon={<ReloadOutlined />} onClick={() => loadLogs(logPage)}>
-                    Refresh
+                    {t('pages.mockServer.refresh')}
                   </Button>
-                  <Popconfirm title="Clear all logs?" okType="danger" onConfirm={handleClearLogs}>
-                    <Button size="small" danger icon={<ClearOutlined />}>Clear</Button>
+                  <Popconfirm title={t('pages.mockServer.clearLogsConfirm')} okType="danger" onConfirm={handleClearLogs}>
+                    <Button size="small" danger icon={<ClearOutlined />}>{t('pages.mockServer.clear')}</Button>
                   </Popconfirm>
                 </div>
                 <Table
@@ -690,7 +696,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
 
       {/* Log Detail Drawer */}
       <Drawer
-        title="Request Detail"
+        title={t('pages.mockServer.requestDetail')}
         open={!!logDrawer}
         onClose={() => setLogDrawer(null)}
         width={560}
@@ -704,6 +710,7 @@ function ServerDetailView({ serverId }: { serverId: string }) {
 // ────────────────── Log Detail ──────────────────
 
 function LogDetail({ log }: { log: MockRequestLog }) {
+  const { t } = useTranslation()
   const sectionLabel: React.CSSProperties = {
     textTransform: 'uppercase',
     color: '#8c8c8c',
@@ -741,32 +748,32 @@ function LogDetail({ log }: { log: MockRequestLog }) {
       <Space size="middle" style={{ marginBottom: 12 }}>
         <Tag color={METHOD_COLORS[log.httpMethod] || '#8c8c8c'} style={{ fontWeight: 600 }}>{log.httpMethod}</Tag>
         <Text code>{log.requestPath}</Text>
-        <Tag color={log.matched ? 'green' : 'red'}>{log.matched ? 'Matched' : 'No Match'}</Tag>
+        <Tag color={log.matched ? 'green' : 'red'}>{log.matched ? t('pages.mockServer.matched') : t('pages.mockServer.noMatch')}</Tag>
         <Text type="secondary">{log.durationMs}ms</Text>
       </Space>
 
-      <div style={sectionLabel}>REQUEST HEADERS</div>
+      <div style={sectionLabel}>{t('pages.mockServer.sectionRequestHeaders')}</div>
       <div style={codeBlock}>{parseJson(log.requestHeaders)}</div>
 
       {log.queryParams && log.queryParams !== '{}' && (
         <>
-          <div style={sectionLabel}>QUERY PARAMS</div>
+          <div style={sectionLabel}>{t('pages.mockServer.sectionQueryParams')}</div>
           <div style={codeBlock}>{parseJson(log.queryParams)}</div>
         </>
       )}
 
       {log.requestBody && (
         <>
-          <div style={sectionLabel}>REQUEST BODY</div>
+          <div style={sectionLabel}>{t('pages.mockServer.sectionRequestBody')}</div>
           <div style={codeBlock}>{parseJson(log.requestBody)}</div>
         </>
       )}
 
-      <div style={sectionLabel}>RESPONSE (STATUS {log.responseStatus})</div>
+      <div style={sectionLabel}>{t('pages.mockServer.sectionResponse', { status: log.responseStatus })}</div>
       <div style={codeBlock}>{parseJson(log.responseBody)}</div>
 
-      <div style={{ ...sectionLabel, marginTop: 16 }}>TIMESTAMP</div>
-      <Text type="secondary" style={{ fontSize: 12 }}>{new Date(log.createdAt).toLocaleString()}</Text>
+      <div style={{ ...sectionLabel, marginTop: 16 }}>{t('pages.mockServer.sectionTimestamp')}</div>
+      <Text type="secondary" style={{ fontSize: 12 }}>{formatDateTime(log.createdAt)}</Text>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import {
   Table,
@@ -32,9 +33,10 @@ import type {
 import { environmentApi, type EnvironmentListParams } from '../services/environmentApi'
 
 
-const COLUMN_LABELS: Record<string, string> = {
-  name: 'Name',
-  baseUrl: 'Base URL',
+function columnLabel(dataIndex: string, t: (key: string) => string): string {
+  if (dataIndex === 'name') return t('pages.environments.columnName')
+  if (dataIndex === 'baseUrl') return t('pages.environments.columnBaseUrl')
+  return dataIndex
 }
 
 function exportEnvironment(env: Environment) {
@@ -86,6 +88,7 @@ function ColumnSearch({
   onApply: (dataIndex: string, value: string) => void
   onReset: (dataIndex: string) => void
 }) {
+  const { t } = useTranslation()
   const [localValue, setLocalValue] = useState(appliedValue)
   const inputRef = useRef<InputRef>(null)
   const { close } = filterDropdownProps
@@ -101,7 +104,7 @@ function ColumnSearch({
     <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
       <Input
         ref={inputRef}
-        placeholder={`Search ${COLUMN_LABELS[dataIndex] ?? dataIndex}`}
+        placeholder={t('common.searchColumn', { column: columnLabel(dataIndex, t) })}
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         onPressEnter={() => {
@@ -121,7 +124,7 @@ function ColumnSearch({
             close()
           }}
         >
-          Search
+          {t('common.search')}
         </Button>
         <Button
           size="small"
@@ -131,10 +134,10 @@ function ColumnSearch({
             close()
           }}
         >
-          Reset
+          {t('common.reset')}
         </Button>
         <Button type="link" size="small" onClick={() => close()}>
-          Close
+          {t('common.close')}
         </Button>
       </Space>
     </div>
@@ -142,6 +145,7 @@ function ColumnSearch({
 }
 
 export default function EnvironmentsPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -177,7 +181,7 @@ export default function EnvironmentsPage() {
         const result = await environmentApi.list(params)
         if (!cancelled) setData(result)
       } catch {
-        if (!cancelled) message.error('Failed to load environments')
+        if (!cancelled) message.error(t('pages.environments.failedLoad'))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -189,10 +193,10 @@ export default function EnvironmentsPage() {
   const handleDelete = async (id: string) => {
     try {
       await environmentApi.delete(id)
-      message.success('Environment deleted')
+      message.success(t('pages.environments.deleted'))
       setRefreshKey((k) => k + 1)
     } catch {
-      message.error('Failed to delete environment')
+      message.error(t('pages.environments.failedDelete'))
     }
   }
 
@@ -223,7 +227,7 @@ export default function EnvironmentsPage() {
   const doImport = async (importData: EnvironmentRequest) => {
     try {
       await environmentApi.create(importData)
-      message.success(`Environment "${importData.name}" imported`)
+      message.success(t('pages.environments.imported', { name: importData.name }))
       setPendingImport(null)
       setRefreshKey((k) => k + 1)
     } catch (err: unknown) {
@@ -235,12 +239,12 @@ export default function EnvironmentsPage() {
           setRenameValue(importData.name)
           setRenameModalOpen(true)
         } else {
-          message.error(errorMsg || 'Import failed')
+          message.error(errorMsg || t('common.importFailed'))
         }
       } else if (err instanceof SyntaxError) {
-        message.error('Invalid JSON file')
+        message.error(t('common.invalidJson'))
       } else {
-        message.error('Import failed')
+        message.error(t('common.importFailed'))
       }
     }
   }
@@ -249,12 +253,12 @@ export default function EnvironmentsPage() {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onerror = () => message.error('Failed to read file')
+    reader.onerror = () => message.error(t('common.failedReadFile'))
     reader.onload = async (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string) as EnvironmentRequest
         if (!parsed.name || !parsed.baseUrl) {
-          message.error('Invalid file: missing name or baseUrl')
+          message.error(t('pages.environments.invalidFile'))
           return
         }
         await doImport({
@@ -284,9 +288,9 @@ export default function EnvironmentsPage() {
         })
       } catch (err) {
         if (err instanceof SyntaxError) {
-          message.error('Invalid JSON file')
+          message.error(t('common.invalidJson'))
         } else {
-          message.error('Import failed')
+          message.error(t('common.importFailed'))
         }
       }
     }
@@ -322,7 +326,7 @@ export default function EnvironmentsPage() {
 
   const columns = [
     {
-      title: 'S.No',
+      title: t('common.sno'),
       key: 'sno',
       width: 70,
       render: (_: unknown, __: Environment, index: number) => (
@@ -330,7 +334,7 @@ export default function EnvironmentsPage() {
       ),
     },
     {
-      title: 'Name',
+      title: t('pages.environments.columnName'),
       dataIndex: 'name',
       key: 'name',
       sorter: true,
@@ -339,7 +343,7 @@ export default function EnvironmentsPage() {
       render: (name: string) => <strong>{name}</strong>,
     },
     {
-      title: 'Base URL',
+      title: t('pages.environments.columnBaseUrl'),
       dataIndex: 'baseUrl',
       key: 'baseUrl',
       ellipsis: true,
@@ -348,52 +352,52 @@ export default function EnvironmentsPage() {
       ...columnSearchProps('baseUrl'),
     },
     {
-      title: 'Variables',
+      title: t('pages.environments.variables'),
       dataIndex: 'variables',
       key: 'variables',
       width: 100,
       render: (vars: Environment['variables']) => (
         <Space>
           <Tag>{vars.length}</Tag>
-          {vars.some((v) => v.secret) && <Tag color="orange">secrets</Tag>}
+          {vars.some((v) => v.secret) && <Tag color="orange">{t('pages.environments.secrets')}</Tag>}
         </Space>
       ),
     },
     {
-      title: 'Headers',
+      title: t('pages.environments.headers'),
       dataIndex: 'headers',
       key: 'headers',
       width: 80,
       render: (hdrs: Environment['headers']) => <Tag>{hdrs.length}</Tag>,
     },
     {
-      title: 'OAuth',
+      title: t('pages.environments.oauth'),
       key: 'oauth',
       width: 120,
       render: (_: unknown, record: Environment) => (
         <Space size={4}>
           <Tag color={record.oauth?.enabled ? 'green' : undefined}>
-            {record.oauth?.enabled ? 'enabled' : 'disabled'}
+            {record.oauth?.enabled ? t('pages.environments.enabled') : t('pages.environments.disabled')}
           </Tag>
-          {record.oauth?.clientSecretConfigured && <Tag color="orange">secret</Tag>}
+          {record.oauth?.clientSecretConfigured && <Tag color="orange">{t('pages.environments.secret')}</Tag>}
         </Space>
       ),
     },
     {
-      title: 'Actions',
+      title: t('common.actions'),
       key: 'actions',
       width: 160,
       render: (_: unknown, record: Environment) => (
         <div onClick={(e) => e.stopPropagation()}>
           <Space>
-            <Tooltip title="Edit">
+            <Tooltip title={t('common.edit')}>
               <Button
                 type="text"
                 icon={<EditOutlined />}
                 onClick={() => navigate(`/environments/${record.id}`)}
               />
             </Tooltip>
-            <Tooltip title="Export">
+            <Tooltip title={t('common.export')}>
               <Button
                 type="text"
                 icon={<ExportOutlined />}
@@ -401,9 +405,9 @@ export default function EnvironmentsPage() {
               />
             </Tooltip>
             <Popconfirm
-              title="Delete this environment?"
+              title={t('pages.environments.deleteConfirm')}
               onConfirm={() => handleDelete(record.id)}
-              okText="Delete"
+              okText={t('common.delete')}
               okType="danger"
             >
               <Button type="text" danger icon={<DeleteOutlined />} />
@@ -418,22 +422,22 @@ export default function EnvironmentsPage() {
     <div>
       <div className="page-header">
         <div className="page-header-copy">
-          <div className="page-header-kicker">Runtime</div>
-          <h1 className="page-header-title">Environments</h1>
+          <div className="page-header-kicker">{t('pages.environments.kicker')}</div>
+          <h1 className="page-header-title">{t('pages.environments.title')}</h1>
           <p className="page-header-desc">
-            Base URLs, variables, and connectors used when suites run.
+            {t('pages.environments.description')}
           </p>
         </div>
         <div className="page-header-actions">
           <Button icon={<ImportOutlined />} onClick={() => fileInputRef.current?.click()}>
-            Import
+            {t('common.import')}
           </Button>
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => navigate('/environments/new')}
           >
-            New Environment
+            {t('pages.environments.newEnvironment')}
           </Button>
         </div>
       </div>
@@ -444,14 +448,14 @@ export default function EnvironmentsPage() {
         accept=".json"
         style={{ display: 'none' }}
         onChange={handleImport}
-        aria-label="Import environment JSON file"
+        aria-label={t('pages.environments.importFileLabel')}
       />
 
       <Modal
         title={
           <Space>
             <WarningOutlined style={{ color: '#faad14' }} />
-            Name already exists
+            {t('common.renameTitle')}
           </Space>
         }
         open={renameModalOpen}
@@ -460,16 +464,15 @@ export default function EnvironmentsPage() {
           setRenameModalOpen(false)
           setPendingImport(null)
         }}
-        okText="Import"
+        okText={t('common.import')}
       >
         <p style={{ marginBottom: 12, color: 'var(--text-body)' }}>
-          An environment named <strong>{pendingImport?.name}</strong> already exists.
-          Enter a new name to continue.
+          {t('pages.environments.renameBody', { name: pendingImport?.name })}
         </p>
         <Input
           value={renameValue}
           onChange={(e) => setRenameValue(e.target.value)}
-          placeholder="New environment name"
+          placeholder={t('pages.environments.renamePlaceholder')}
           onPressEnter={handleRenameImport}
           autoFocus
         />
@@ -477,7 +480,7 @@ export default function EnvironmentsPage() {
 
       {activeFilterEntries.length > 0 && (
         <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ color: '#888', fontSize: 13 }}>Filters:</span>
+          <span style={{ color: '#888', fontSize: 13 }}>{t('common.filters')}</span>
           {activeFilterEntries.map(([key, value]) => (
             <Tag
               key={key}
@@ -486,7 +489,7 @@ export default function EnvironmentsPage() {
               color="blue"
               style={{ fontSize: 13 }}
             >
-              {COLUMN_LABELS[key] ?? key}: {value}
+              {columnLabel(key, t)}: {value}
             </Tag>
           ))}
           {activeFilterEntries.length > 1 && (
@@ -497,7 +500,7 @@ export default function EnvironmentsPage() {
               onClick={handleClearAllFilters}
               style={{ fontSize: 12, padding: 0 }}
             >
-              Clear all
+              {t('common.clearAll')}
             </Button>
           )}
         </div>
@@ -519,7 +522,7 @@ export default function EnvironmentsPage() {
           total: data.totalElements,
           showSizeChanger: true,
           pageSizeOptions: ['10', '20', '50'],
-          showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
+          showTotal: (total, range) => t('common.pagination', { from: range[0], to: range[1], total }),
           style: { padding: '0 16px' },
         }}
         onChange={(pagination, _filters, sorter) => {

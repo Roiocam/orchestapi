@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Button,
   Input,
@@ -16,12 +17,6 @@ import { mockApi } from '../services/mockApi'
 const { TextArea } = Input
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'ANY']
-
-const RULE_TYPE_OPTIONS: { value: MockMatchRuleType; label: string }[] = [
-  { value: 'HEADER', label: 'Header' },
-  { value: 'QUERY_PARAM', label: 'Query Param' },
-  { value: 'BODY_JSON_PATH', label: 'Body JSON Path' },
-]
 
 const METHOD_COLORS: Record<string, string> = {
   GET: '#52c41a',
@@ -56,6 +51,7 @@ interface Props {
 }
 
 export default function MockEndpointEditor({ serverId, endpoint, onSave, onCancel }: Props) {
+  const { t } = useTranslation()
   const isNew = !endpoint
 
   const [name, setName] = useState(endpoint?.name || '')
@@ -81,6 +77,12 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
     })),
   )
 
+  const ruleTypeOptions = useMemo(() => [
+    { value: 'HEADER' as const, label: t('components.mockEndpointEditor.ruleTypeHeader') },
+    { value: 'QUERY_PARAM' as const, label: t('components.mockEndpointEditor.ruleTypeQueryParam') },
+    { value: 'BODY_JSON_PATH' as const, label: t('components.mockEndpointEditor.ruleTypeBodyJsonPath') },
+  ], [t])
+
   const fieldLabel: React.CSSProperties = {
     textTransform: 'uppercase',
     color: '#8c8c8c',
@@ -91,8 +93,8 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
   }
 
   const handleSave = async () => {
-    if (!name.trim()) { message.error('Name is required'); return }
-    if (!pathPattern.trim()) { message.error('Path pattern is required'); return }
+    if (!name.trim()) { message.error(t('components.mockEndpointEditor.nameRequired')); return }
+    if (!pathPattern.trim()) { message.error(t('components.mockEndpointEditor.pathRequired')); return }
 
     const data: MockEndpointRequest = {
       name: name.trim(),
@@ -119,46 +121,45 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
     try {
       if (isNew) {
         await mockApi.createEndpoint(serverId, data)
-        message.success('Endpoint created')
+        message.success(t('components.mockEndpointEditor.endpointCreated'))
       } else {
         await mockApi.updateEndpoint(serverId, endpoint.id, data)
-        message.success('Endpoint updated')
+        message.success(t('components.mockEndpointEditor.endpointUpdated'))
       }
       onSave()
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Failed to save endpoint')
+      message.error(err?.response?.data?.message || t('components.mockEndpointEditor.failedSave'))
     } finally {
       setSaving(false)
     }
   }
 
-  // ── Header table helpers ─────────────────────────────────────
   const updateHeader = (id: string, field: 'key' | 'value', val: string) => {
     setResponseHeaders((prev) => prev.map((h) => h._clientId === id ? { ...h, [field]: val } : h))
   }
 
   const headerColumns = [
     {
-      title: 'Key',
+      title: t('components.stepEditor.key'),
       dataIndex: 'key',
       render: (_: unknown, row: HeaderRow) => (
         <Input
           size="small"
           value={row.key}
           onChange={(e) => updateHeader(row._clientId, 'key', e.target.value)}
-          placeholder="Content-Type"
+          placeholder={t('components.mockEndpointEditor.keyPlaceholder')}
         />
       ),
     },
     {
-      title: 'Value',
+      title: t('components.stepEditor.value'),
       dataIndex: 'value',
       render: (_: unknown, row: HeaderRow) => (
         <Input
           size="small"
           value={row.value}
           onChange={(e) => updateHeader(row._clientId, 'value', e.target.value)}
-          placeholder="application/json"
+          placeholder={t('components.mockEndpointEditor.valuePlaceholder')}
         />
       ),
     },
@@ -177,44 +178,45 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
     },
   ]
 
-  // ── Match rule table helpers ─────────────────────────────────
   const updateRule = (id: string, field: keyof RuleRow, val: string) => {
     setMatchRules((prev) => prev.map((r) => r._clientId === id ? { ...r, [field]: val } : r))
   }
 
   const ruleColumns = [
     {
-      title: 'Type',
+      title: t('components.mockEndpointEditor.type'),
       width: 150,
       render: (_: unknown, row: RuleRow) => (
         <Select
           size="small"
           value={row.ruleType}
           onChange={(v) => updateRule(row._clientId, 'ruleType', v)}
-          options={RULE_TYPE_OPTIONS}
+          options={ruleTypeOptions}
           style={{ width: '100%' }}
         />
       ),
     },
     {
-      title: 'Key / Path',
+      title: t('components.mockEndpointEditor.keyOrPath'),
       render: (_: unknown, row: RuleRow) => (
         <Input
           size="small"
           value={row.matchKey}
           onChange={(e) => updateRule(row._clientId, 'matchKey', e.target.value)}
-          placeholder={row.ruleType === 'BODY_JSON_PATH' ? '$.data.type' : 'header-name'}
+          placeholder={row.ruleType === 'BODY_JSON_PATH'
+            ? t('components.mockEndpointEditor.jsonPathPlaceholder')
+            : t('components.mockEndpointEditor.keyPathPlaceholder')}
         />
       ),
     },
     {
-      title: 'Value (optional)',
+      title: t('components.mockEndpointEditor.valueOptional'),
       render: (_: unknown, row: RuleRow) => (
         <Input
           size="small"
           value={row.matchValue}
           onChange={(e) => updateRule(row._clientId, 'matchValue', e.target.value)}
-          placeholder="expected value"
+          placeholder={t('components.mockEndpointEditor.expectedValuePlaceholder')}
         />
       ),
     },
@@ -235,14 +237,13 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
 
   return (
     <div>
-      {/* Top: Name + Method + Path + Enable */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: '0 0 200px' }}>
-          <div style={fieldLabel}>NAME</div>
-          <Input size="small" value={name} onChange={(e) => setName(e.target.value)} placeholder="Endpoint name" />
+          <div style={fieldLabel}>{t('components.mockEndpointEditor.nameLabel')}</div>
+          <Input size="small" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('components.mockEndpointEditor.endpointNamePlaceholder')} />
         </div>
         <div style={{ flex: '0 0 100px' }}>
-          <div style={fieldLabel}>METHOD</div>
+          <div style={fieldLabel}>{t('components.mockEndpointEditor.methodLabel')}</div>
           <Select
             size="small"
             value={httpMethod}
@@ -255,27 +256,26 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
           />
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={fieldLabel}>PATH PATTERN</div>
-          <Input size="small" value={pathPattern} onChange={(e) => setPathPattern(e.target.value)} placeholder="/api/users/:id" />
+          <div style={fieldLabel}>{t('components.mockEndpointEditor.pathLabel')}</div>
+          <Input size="small" value={pathPattern} onChange={(e) => setPathPattern(e.target.value)} placeholder={t('components.mockEndpointEditor.pathPlaceholder')} />
         </div>
         <div>
-          <div style={fieldLabel}>ENABLED</div>
+          <div style={fieldLabel}>{t('components.mockEndpointEditor.enabledLabel')}</div>
           <Switch size="small" checked={enabled} onChange={setEnabled} />
         </div>
       </div>
 
-      {/* Tabs: Response, Match Rules, Settings */}
       <Tabs
         size="small"
         items={[
           {
             key: 'response',
-            label: 'Response',
+            label: t('components.mockEndpointEditor.tabResponse'),
             children: (
               <div>
                 <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   <div style={{ flex: '0 0 100px' }}>
-                    <div style={fieldLabel}>STATUS CODE</div>
+                    <div style={fieldLabel}>{t('components.mockEndpointEditor.statusCodeLabel')}</div>
                     <InputNumber
                       size="small"
                       value={responseStatus}
@@ -286,16 +286,16 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
                     />
                   </div>
                 </div>
-                <div style={fieldLabel}>RESPONSE BODY</div>
+                <div style={fieldLabel}>{t('components.mockEndpointEditor.responseBodyLabel')}</div>
                 <TextArea
                   size="small"
                   value={responseBody}
                   onChange={(e) => setResponseBody(e.target.value)}
                   rows={6}
-                  placeholder='{"message": "success"}'
+                  placeholder={t('components.mockEndpointEditor.responseBodyPlaceholder')}
                   style={{ fontFamily: 'monospace', fontSize: 12 }}
                 />
-                <div style={{ ...fieldLabel, marginTop: 12 }}>RESPONSE HEADERS</div>
+                <div style={{ ...fieldLabel, marginTop: 12 }}>{t('components.mockEndpointEditor.responseHeadersLabel')}</div>
                 <Table
                   rowKey="_clientId"
                   dataSource={responseHeaders}
@@ -311,18 +311,18 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
                   onClick={() => setResponseHeaders((prev) => [...prev, { _clientId: genId(), key: '', value: '' }])}
                   style={{ color: '#1677ff', borderColor: '#1677ff' }}
                 >
-                  Add Header
+                  {t('components.mockEndpointEditor.addHeader')}
                 </Button>
               </div>
             ),
           },
           {
             key: 'rules',
-            label: `Match Rules (${matchRules.length})`,
+            label: t('components.mockEndpointEditor.tabMatchRules', { count: matchRules.length }),
             children: (
               <div>
                 <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 8 }}>
-                  All rules must match for this endpoint to be selected. Leave value empty to check existence only.
+                  {t('components.mockEndpointEditor.matchRulesHint')}
                 </div>
                 <Table
                   rowKey="_clientId"
@@ -342,18 +342,18 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
                   ])}
                   style={{ color: '#597ef7', borderColor: '#597ef7' }}
                 >
-                  Add Rule
+                  {t('components.mockEndpointEditor.addRule')}
                 </Button>
               </div>
             ),
           },
           {
             key: 'settings',
-            label: 'Settings',
+            label: t('components.mockEndpointEditor.tabSettings'),
             children: (
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <div style={{ flex: '0 0 120px' }}>
-                  <div style={fieldLabel}>DELAY (MS)</div>
+                  <div style={fieldLabel}>{t('components.mockEndpointEditor.delayLabel')}</div>
                   <InputNumber
                     size="small"
                     value={delayMs}
@@ -364,13 +364,13 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
                   />
                 </div>
                 <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={fieldLabel}>DESCRIPTION</div>
+                  <div style={fieldLabel}>{t('components.mockEndpointEditor.descriptionLabel')}</div>
                   <TextArea
                     size="small"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={2}
-                    placeholder="Optional description"
+                    placeholder={t('components.mockEndpointEditor.descriptionPlaceholder')}
                   />
                 </div>
               </div>
@@ -379,11 +379,10 @@ export default function MockEndpointEditor({ serverId, endpoint, onSave, onCance
         ]}
       />
 
-      {/* Save / Cancel */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
-        <Button size="small" onClick={onCancel}>Cancel</Button>
+        <Button size="small" onClick={onCancel}>{t('common.cancel')}</Button>
         <Button size="small" type="primary" onClick={handleSave} loading={saving}>
-          {isNew ? 'Create' : 'Save'}
+          {isNew ? t('common.create') : t('common.save')}
         </Button>
       </div>
     </div>

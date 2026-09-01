@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { useTranslation } from 'react-i18next'
 import type { TestStep } from '../types/testSuite'
 
 const METHOD_COLORS: Record<string, string> = {
@@ -33,6 +34,7 @@ export interface StepNodeData {
 }
 
 function StepNode({ data }: NodeProps & { data: StepNodeData }) {
+  const { t } = useTranslation()
   const { step, status, durationMs, selected, depCount, dimmed } = data
   const style = STATUS_STYLES[status] || STATUS_STYLES.default
   const methodColor = METHOD_COLORS[step.method] || '#666'
@@ -98,7 +100,7 @@ function StepNode({ data }: NodeProps & { data: StepNodeData }) {
         </div>
         {(depCount > 0 || durationMs != null) && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#bfbfbf', marginTop: 3 }}>
-            {depCount > 0 ? <span>{depCount} dep{depCount > 1 ? 's' : ''}</span> : <span />}
+            {depCount > 0 ? <span>{t('components.dagNode.deps', { count: depCount })}</span> : <span />}
             {durationMs != null ? <span>{durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`}</span> : null}
           </div>
         )}
