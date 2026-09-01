@@ -169,7 +169,8 @@ public class RunService {
 
     @Transactional(readOnly = true)
     public PageResponse<TestRunResponse> findAll(String suiteName, String status, UUID environmentId,
-                                                  String triggerType, LocalDateTime from, LocalDateTime to,
+                                                  String environmentName, String triggerType,
+                                                  LocalDateTime from, LocalDateTime to,
                                                   Pageable pageable) {
         Specification<TestRun> spec = Specification.where(null);
 
@@ -181,6 +182,16 @@ public class RunService {
         }
         if (environmentId != null) {
             spec = spec.and((root, query, cb) -> cb.equal(root.get("environmentId"), environmentId));
+        }
+        if (environmentName != null && !environmentName.isBlank()) {
+            String pattern = "%" + environmentName.toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> {
+                var sub = query.subquery(UUID.class);
+                var envRoot = sub.from(Environment.class);
+                sub.select(envRoot.get("id"))
+                        .where(cb.like(cb.lower(envRoot.get("name")), pattern));
+                return root.get("environmentId").in(sub);
+            });
         }
         if (triggerType != null && !triggerType.isBlank()) {
             try {

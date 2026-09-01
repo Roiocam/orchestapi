@@ -371,6 +371,9 @@ export default function BatchDetailPage() {
                 {batch.completedAt && (
                   <> · {t('pages.batchDetail.completedAt', { time: formatDateTime(batch.completedAt) })}</>
                 )}
+                {batch.totalDurationMs != null && (
+                  <> · {t('pages.runs.columnDuration')}: {formatDuration(batch.totalDurationMs)}</>
+                )}
               </Text>
             )}
           </Space>

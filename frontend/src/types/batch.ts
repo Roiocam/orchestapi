@@ -10,12 +10,14 @@ export interface BatchRunResponse {
   scopeId: string
   scopeName: string
   environmentId: string | null
+  environmentName: string | null
   scheduleId: string | null
   triggerType: BatchTriggerType
   status: BatchStatus
   totalSuites: number
   succeeded: number
   failed: number
+  totalDurationMs: number | null
   startedAt: string
   completedAt: string | null
   createdAt: string
@@ -39,6 +41,8 @@ export interface BatchStartResponse {
 export interface BatchListParams {
   page?: number
   size?: number
+  scopeName?: string
+  environmentName?: string
   triggerType?: string
   status?: string
   from?: string

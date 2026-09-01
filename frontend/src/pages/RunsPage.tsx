@@ -55,6 +55,7 @@ const { RangePicker } = DatePicker
 
 function columnLabel(dataIndex: string, t: TFunction): string {
   if (dataIndex === 'suiteName') return t('pages.runs.columnSuiteName')
+  if (dataIndex === 'scopeName') return t('pages.runs.columnScope')
   if (dataIndex === 'environmentName') return t('pages.runs.columnEnvironment')
   return dataIndex
 }
@@ -228,6 +229,7 @@ export default function RunsPage() {
   const [batchPageSize, setBatchPageSize] = useState(10)
   const [batchSortBy, setBatchSortBy] = useState('startedAt')
   const [batchSortDir, setBatchSortDir] = useState<'asc' | 'desc'>('desc')
+  const [batchAppliedFilters, setBatchAppliedFilters] = useState<Record<string, string>>({})
   const [batchTriggerFilter, setBatchTriggerFilter] = useState<string | undefined>(undefined)
   const [batchStatusFilter, setBatchStatusFilter] = useState<string | undefined>(undefined)
   const [batchDateRange, setBatchDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null)
@@ -304,6 +306,7 @@ export default function RunsPage() {
           sortDir,
         }
         if (appliedFilters.suiteName) params.suiteName = appliedFilters.suiteName
+        if (appliedFilters.environmentName) params.environmentName = appliedFilters.environmentName
         if (triggerFilter) params.triggerType = triggerFilter
         if (dateRange && dateRange[0]) params.from = dateRange[0].startOf('day').toISOString()
         if (dateRange && dateRange[1]) params.to = dateRange[1].endOf('day').toISOString()
@@ -332,6 +335,8 @@ export default function RunsPage() {
           size: batchPageSize,
           sortBy: batchSortBy,
           sortDir: batchSortDir,
+          scopeName: batchAppliedFilters.scopeName,
+          environmentName: batchAppliedFilters.environmentName,
           triggerType: batchTriggerFilter,
           status: batchStatusFilter,
           from: batchDateRange?.[0]?.startOf('day').toISOString(),
@@ -352,6 +357,7 @@ export default function RunsPage() {
     batchPageSize,
     batchSortBy,
     batchSortDir,
+    batchAppliedFilters,
     batchTriggerFilter,
     batchStatusFilter,
     batchDateRange,
@@ -448,6 +454,29 @@ export default function RunsPage() {
     setTriggerFilter(undefined)
     setDateRange(null)
     setCurrentPage(1)
+  }
+
+  // ──── Batches: filter handlers ────
+  const handleApplyBatchFilter = (dataIndex: string, value: string) => {
+    setBatchAppliedFilters((prev) => ({ ...prev, [dataIndex]: value }))
+    setBatchPage(1)
+  }
+
+  const handleResetBatchFilter = (dataIndex: string) => {
+    setBatchAppliedFilters((prev) => {
+      const next = { ...prev }
+      delete next[dataIndex]
+      return next
+    })
+    setBatchPage(1)
+  }
+
+  const handleClearAllBatchFilters = () => {
+    setBatchAppliedFilters({})
+    setBatchTriggerFilter(undefined)
+    setBatchStatusFilter(undefined)
+    setBatchDateRange(null)
+    setBatchPage(1)
   }
 
   const handleViewRun = async (id: string) => {
@@ -728,10 +757,31 @@ export default function RunsPage() {
     filtered: !!appliedFilters[dataIndex],
   })
 
+  const batchColumnSearchProps = (dataIndex: string) => ({
+    filterDropdown: (props: FilterDropdownProps) => (
+      <ColumnSearch
+        dataIndex={dataIndex}
+        filterDropdownProps={props}
+        appliedValue={batchAppliedFilters[dataIndex] ?? ''}
+        onApply={handleApplyBatchFilter}
+        onReset={handleResetBatchFilter}
+      />
+    ),
+    filterIcon: () => (
+      <SearchOutlined style={{ color: batchAppliedFilters[dataIndex] ? '#1677ff' : undefined }} />
+    ),
+    filtered: !!batchAppliedFilters[dataIndex],
+  })
+
   // ──── Active filter entries (column search + trigger + date) ────
   const activeFilterEntries = Object.entries(appliedFilters).filter(([, v]) => v)
   const hasAdditionalFilters = !!triggerFilter || (dateRange && (dateRange[0] || dateRange[1]))
   const hasAnyFilter = activeFilterEntries.length > 0 || hasAdditionalFilters
+
+  const batchActiveFilterEntries = Object.entries(batchAppliedFilters).filter(([, v]) => v)
+  const hasBatchAdditionalFilters =
+    !!batchTriggerFilter || !!batchStatusFilter || (batchDateRange && (batchDateRange[0] || batchDateRange[1]))
+  const hasAnyBatchFilter = batchActiveFilterEntries.length > 0 || hasBatchAdditionalFilters
 
   // ──── Cron readable text helper ────
   // cronstrue expects 5-field (standard) or 6-field (with seconds) cron.
@@ -853,12 +903,21 @@ export default function RunsPage() {
     {
       title: t('pages.runs.columnScope'),
       key: 'scope',
+      dataIndex: 'scopeName',
+      ...batchColumnSearchProps('scopeName'),
       render: (_: unknown, record: BatchRunResponse) => (
         <Space size={6} wrap>
           <Tag>{translateScope(record.scopeType, t)}</Tag>
           <strong>{record.scopeName}</strong>
         </Space>
       ),
+    },
+    {
+      title: t('pages.runs.columnEnvironment'),
+      dataIndex: 'environmentName',
+      key: 'environmentName',
+      ...batchColumnSearchProps('environmentName'),
+      render: (name: string | null) => name || '\u2014',
     },
     {
       title: t('pages.runs.columnTrigger'),
@@ -891,6 +950,13 @@ export default function RunsPage() {
           {record.totalSuites}
         </span>
       ),
+    },
+    {
+      title: t('pages.runs.columnDuration'),
+      dataIndex: 'totalDurationMs',
+      key: 'totalDurationMs',
+      width: 100,
+      render: (ms: number | null) => (ms != null ? formatDuration(ms) : '\u2014'),
     },
     {
       title: t('pages.runs.columnStartedAt'),
@@ -1210,6 +1276,72 @@ export default function RunsPage() {
                     style={{ width: 260 }}
                   />
                 </div>
+
+                {hasAnyBatchFilter && (
+                  <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ color: '#888', fontSize: 13 }}>{t('common.filters')}</span>
+                    {batchActiveFilterEntries.map(([key, value]) => (
+                      <Tag
+                        key={key}
+                        closable
+                        onClose={() => handleResetBatchFilter(key)}
+                        color="blue"
+                        style={{ fontSize: 13 }}
+                      >
+                        {columnLabel(key, t)}: {value}
+                      </Tag>
+                    ))}
+                    {batchTriggerFilter && (
+                      <Tag
+                        closable
+                        onClose={() => { setBatchTriggerFilter(undefined); setBatchPage(1) }}
+                        color="blue"
+                        style={{ fontSize: 13 }}
+                      >
+                        {t('pages.runs.filterTrigger', { value: translateTrigger(batchTriggerFilter, t) })}
+                      </Tag>
+                    )}
+                    {batchStatusFilter && (
+                      <Tag
+                        closable
+                        onClose={() => { setBatchStatusFilter(undefined); setBatchPage(1) }}
+                        color="blue"
+                        style={{ fontSize: 13 }}
+                      >
+                        {t('pages.runs.filterStatusTag', {
+                          value: translateStatus(batchStatusFilter, t),
+                        })}
+                      </Tag>
+                    )}
+                    {batchDateRange && batchDateRange[0] && batchDateRange[1] && (
+                      <Tag
+                        closable
+                        onClose={() => { setBatchDateRange(null); setBatchPage(1) }}
+                        color="blue"
+                        style={{ fontSize: 13 }}
+                      >
+                        {t('pages.runs.filterDate', {
+                          from: batchDateRange[0].format('YYYY-MM-DD'),
+                          to: batchDateRange[1].format('YYYY-MM-DD'),
+                        })}
+                      </Tag>
+                    )}
+                    {(batchActiveFilterEntries.length
+                      + (batchTriggerFilter ? 1 : 0)
+                      + (batchStatusFilter ? 1 : 0)
+                      + (batchDateRange && batchDateRange[0] ? 1 : 0)) > 1 && (
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={<CloseCircleFilled />}
+                        onClick={handleClearAllBatchFilters}
+                        style={{ fontSize: 12, padding: 0 }}
+                      >
+                        {t('common.clearAll')}
+                      </Button>
+                    )}
+                  </div>
+                )}
 
                 <Table
                   columns={batchColumns}

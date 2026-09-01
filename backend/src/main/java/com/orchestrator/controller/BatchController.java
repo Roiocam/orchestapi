@@ -47,6 +47,8 @@ public class BatchController {
     public PageResponse<BatchRunResponse> findAll(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String scopeName,
+            @RequestParam(required = false) String environmentName,
             @RequestParam(required = false) String triggerType,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) LocalDateTime from,
@@ -60,7 +62,8 @@ public class BatchController {
         Sort sort = sortDir.equalsIgnoreCase("asc")
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
-        return batchRunService.findAll(triggerType, status, from, to, PageRequest.of(page, size, sort));
+        return batchRunService.findAll(scopeName, environmentName, triggerType, status, from, to,
+                PageRequest.of(page, size, sort));
     }
 
     @GetMapping("/{id}")

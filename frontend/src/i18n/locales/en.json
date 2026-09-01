@@ -525,6 +525,7 @@
       "filterByResult": "Filter by result",
       "filterBySchedule": "Filter by schedule",
       "filterTrigger": "Trigger: {{value}}",
+      "filterStatusTag": "Status: {{value}}",
       "filterDate": "Date: {{from}} to {{to}}",
       "triggerManual": "Manual",
       "triggerScheduled": "Scheduled",

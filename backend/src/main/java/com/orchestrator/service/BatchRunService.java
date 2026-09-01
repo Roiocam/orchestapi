@@ -7,10 +7,12 @@ import com.orchestrator.dto.PageResponse;
 import com.orchestrator.dto.TestRunResponse;
 import com.orchestrator.exception.NotFoundException;
 import com.orchestrator.model.BatchRun;
+import com.orchestrator.model.Environment;
 import com.orchestrator.model.enums.BatchScopeType;
 import com.orchestrator.model.enums.BatchStatus;
 import com.orchestrator.model.enums.TriggerType;
 import com.orchestrator.repository.BatchRunRepository;
+import com.orchestrator.repository.EnvironmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -18,6 +20,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -27,6 +30,7 @@ import java.util.UUID;
 public class BatchRunService {
 
     private final BatchRunRepository repository;
+    private final EnvironmentRepository environmentRepository;
     private final RunService runService;
 
     @Transactional
@@ -63,13 +67,29 @@ public class BatchRunService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<BatchRunResponse> findAll(String triggerType,
+    public PageResponse<BatchRunResponse> findAll(String scopeName,
+                                                   String environmentName,
+                                                   String triggerType,
                                                    String status,
                                                    LocalDateTime from,
                                                    LocalDateTime to,
                                                    Pageable pageable) {
         Specification<BatchRun> spec = Specification.where(null);
 
+        if (scopeName != null && !scopeName.isBlank()) {
+            String pattern = "%" + scopeName.toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.like(cb.lower(root.get("scopeName")), pattern));
+        }
+        if (environmentName != null && !environmentName.isBlank()) {
+            String pattern = "%" + environmentName.toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> {
+                var sub = query.subquery(UUID.class);
+                var envRoot = sub.from(Environment.class);
+                sub.select(envRoot.get("id"))
+                        .where(cb.like(cb.lower(envRoot.get("name")), pattern));
+                return root.get("environmentId").in(sub);
+            });
+        }
         if (status != null && !status.isBlank()) {
             try {
                 BatchStatus bs = BatchStatus.valueOf(status);
@@ -129,21 +149,34 @@ public class BatchRunService {
     }
 
     private BatchRunResponse toResponse(BatchRun batch) {
+        Long totalDurationMs = null;
+        if (batch.getStartedAt() != null && batch.getCompletedAt() != null) {
+            totalDurationMs = Duration.between(batch.getStartedAt(), batch.getCompletedAt()).toMillis();
+        }
         return BatchRunResponse.builder()
                 .id(batch.getId().toString())
                 .scopeType(batch.getScopeType().name())
                 .scopeId(batch.getScopeId().toString())
                 .scopeName(batch.getScopeName())
                 .environmentId(batch.getEnvironmentId() != null ? batch.getEnvironmentId().toString() : null)
+                .environmentName(resolveEnvironmentName(batch.getEnvironmentId()))
                 .scheduleId(batch.getScheduleId() != null ? batch.getScheduleId().toString() : null)
                 .triggerType(batch.getTriggerType().name())
                 .status(batch.getStatus().name())
                 .totalSuites(batch.getTotalSuites())
                 .succeeded(batch.getSucceeded())
                 .failed(batch.getFailed())
+                .totalDurationMs(totalDurationMs)
                 .startedAt(batch.getStartedAt())
                 .completedAt(batch.getCompletedAt())
                 .createdAt(batch.getCreatedAt())
                 .build();
+    }
+
+    private String resolveEnvironmentName(UUID environmentId) {
+        if (environmentId == null) return null;
+        return environmentRepository.findById(environmentId)
+                .map(Environment::getName)
+                .orElse(null);
     }
 }

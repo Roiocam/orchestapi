@@ -57,6 +57,7 @@ public class RunController {
             @RequestParam(required = false) String suiteName,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID environmentId,
+            @RequestParam(required = false) String environmentName,
             @RequestParam(required = false) String triggerType,
             @RequestParam(required = false) LocalDateTime from,
             @RequestParam(required = false) LocalDateTime to,
@@ -69,7 +70,7 @@ public class RunController {
         Sort sort = sortDir.equalsIgnoreCase("asc")
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
-        return runService.findAll(suiteName, status, environmentId, triggerType, from, to,
+        return runService.findAll(suiteName, status, environmentId, environmentName, triggerType, from, to,
                 PageRequest.of(page, size, sort));
     }
 

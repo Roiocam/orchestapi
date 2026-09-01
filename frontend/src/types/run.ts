@@ -72,6 +72,7 @@ export interface RunListParams {
   suiteName?: string
   status?: string
   environmentId?: string
+  environmentName?: string
   triggerType?: string
   from?: string
   to?: string

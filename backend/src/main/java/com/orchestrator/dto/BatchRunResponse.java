@@ -15,12 +15,14 @@ public class BatchRunResponse {
     private String scopeId;
     private String scopeName;
     private String environmentId;
+    private String environmentName;
     private String scheduleId;
     private String triggerType;
     private String status;
     private int totalSuites;
     private int succeeded;
     private int failed;
+    private Long totalDurationMs;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
     private LocalDateTime createdAt;
