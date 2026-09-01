@@ -37,11 +37,18 @@ public class RunService {
 
     @Transactional
     public TestRun createRun(UUID suiteId, UUID environmentId, TriggerType triggerType, UUID scheduleId) {
+        return createRun(suiteId, environmentId, triggerType, scheduleId, null);
+    }
+
+    @Transactional
+    public TestRun createRun(UUID suiteId, UUID environmentId, TriggerType triggerType,
+                             UUID scheduleId, UUID batchId) {
         TestRun run = TestRun.builder()
                 .suiteId(suiteId)
                 .environmentId(environmentId)
                 .triggerType(triggerType)
                 .scheduleId(scheduleId)
+                .batchId(batchId)
                 .status(RunStatus.RUNNING)
                 .startedAt(LocalDateTime.now())
                 .build();

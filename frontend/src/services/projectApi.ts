@@ -2,10 +2,10 @@ import axios from 'axios'
 import type {
   ApiCollection,
   CollectionRequest,
-  CollectionRunResponse,
   Project,
   ProjectRequest,
 } from '../types/project'
+import type { BatchStartResponse } from '../types/batch'
 
 const PROJECTS_BASE = '/api/projects'
 const COLLECTIONS_BASE = '/api/collections'
@@ -45,9 +45,10 @@ export const collectionApi = {
 
   run: (id: string, environmentId?: string) =>
     axios
-      .post<CollectionRunResponse>(
+      .post<BatchStartResponse>(
         `${COLLECTIONS_BASE}/${id}/run`,
         environmentId ? { environmentId } : {},
+        { validateStatus: (status) => status === 202 || (status >= 200 && status < 300) },
       )
       .then((r) => r.data),
 }

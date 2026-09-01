@@ -1,17 +1,14 @@
 package com.orchestrator.service;
 
+import com.orchestrator.dto.BatchStartResponse;
 import com.orchestrator.dto.CollectionRequest;
 import com.orchestrator.dto.CollectionResponse;
-import com.orchestrator.dto.CollectionRunResponse;
-import com.orchestrator.dto.CollectionSuiteRunResult;
 import com.orchestrator.dto.RunRequest;
-import com.orchestrator.dto.SuiteBatchRunResult;
 import com.orchestrator.exception.NotFoundException;
 import com.orchestrator.model.ApiCollection;
 import com.orchestrator.model.DefaultHierarchyIds;
 import com.orchestrator.model.TestSuite;
 import com.orchestrator.model.enums.ScheduleScopeType;
-import com.orchestrator.model.enums.TriggerType;
 import com.orchestrator.repository.ApiCollectionRepository;
 import com.orchestrator.repository.ProjectRepository;
 import com.orchestrator.repository.TestSuiteRepository;
@@ -31,6 +28,7 @@ public class CollectionService {
     private final ProjectRepository projectRepository;
     private final TestSuiteRepository suiteRepository;
     private final ScheduleService scheduleService;
+    private final BatchExecutionService batchExecutionService;
 
     @Transactional(readOnly = true)
     public List<CollectionResponse> findAll(UUID projectId) {
@@ -85,42 +83,14 @@ public class CollectionService {
         return CollectionResponse.from(collection, (int) suiteRepository.countByCollectionId(id));
     }
 
-    public CollectionRunResponse run(UUID id, RunRequest request) {
+    public BatchStartResponse run(UUID id, RunRequest request) {
         ApiCollection collection = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Collection not found: " + id));
         UUID environmentId = request != null ? request.getEnvironmentId() : null;
         List<TestSuite> targets = scheduleService.resolveTargetSuites(ScheduleScopeType.COLLECTION, id);
-        List<SuiteBatchRunResult> batchResults = scheduleService.executeSuitesSequentially(
-                targets, environmentId, TriggerType.MANUAL, null);
-
-        int succeeded = 0;
-        int failed = 0;
-        List<CollectionSuiteRunResult> results = batchResults.stream()
-                .map(item -> CollectionSuiteRunResult.builder()
-                        .suiteId(item.getSuiteId())
-                        .suiteName(item.getSuiteName())
-                        .runId(item.getRunId())
-                        .status(item.getStatus())
-                        .errorMessage(item.getErrorMessage())
-                        .build())
-                .toList();
-        for (CollectionSuiteRunResult result : results) {
-            if ("SUCCESS".equals(result.getStatus())) {
-                succeeded++;
-            } else {
-                failed++;
-            }
-        }
-
-        return CollectionRunResponse.builder()
-                .collectionId(collection.getId())
-                .collectionName(collection.getName())
-                .environmentId(environmentId)
-                .totalSuites(targets.size())
-                .succeeded(succeeded)
-                .failed(failed)
-                .results(results)
-                .build();
+        UUID batchId = batchExecutionService.createAndStartCollectionBatch(
+                collection.getId(), collection.getName(), environmentId, targets);
+        return BatchStartResponse.builder().batchId(batchId).build();
     }
 
     @Transactional

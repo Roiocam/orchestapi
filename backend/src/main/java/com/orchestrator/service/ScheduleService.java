@@ -13,6 +13,7 @@ import com.orchestrator.model.Project;
 import com.orchestrator.model.RunSchedule;
 import com.orchestrator.model.TestRun;
 import com.orchestrator.model.TestSuite;
+import com.orchestrator.model.enums.BatchScopeType;
 import com.orchestrator.model.enums.ScheduleScopeType;
 import com.orchestrator.model.enums.TriggerType;
 import com.orchestrator.repository.ApiCollectionRepository;
@@ -37,6 +38,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
+import java.util.function.BooleanSupplier;
 
 @Service
 @Slf4j
@@ -50,6 +52,7 @@ public class ScheduleService {
     private final RunService runService;
     private final ExecutionService executionService;
     private final TaskScheduler taskScheduler;
+    private final BatchExecutionService batchExecutionService;
 
     private final ConcurrentHashMap<UUID, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
 
@@ -60,7 +63,8 @@ public class ScheduleService {
                            EnvironmentRepository environmentRepository,
                            RunService runService,
                            @Lazy ExecutionService executionService,
-                           TaskScheduler taskScheduler) {
+                           TaskScheduler taskScheduler,
+                           @Lazy BatchExecutionService batchExecutionService) {
         this.repository = repository;
         this.suiteRepository = suiteRepository;
         this.collectionRepository = collectionRepository;
@@ -69,6 +73,7 @@ public class ScheduleService {
         this.runService = runService;
         this.executionService = executionService;
         this.taskScheduler = taskScheduler;
+        this.batchExecutionService = batchExecutionService;
     }
 
     @PostConstruct
@@ -233,7 +238,7 @@ public class ScheduleService {
         }
     }
 
-    private void executeScheduledRun(UUID scheduleId) {
+    void executeScheduledRun(UUID scheduleId) {
         RunSchedule schedule = repository.findById(scheduleId).orElse(null);
         if (schedule == null || !schedule.getActive()) {
             cancelTask(scheduleId);
@@ -249,19 +254,59 @@ public class ScheduleService {
             return;
         }
 
-        // Empty scope mirrors empty suite: treat as successful no-op (no failure).
+        // Empty scope: COLLECTION/PROJECT still create a batch; SUITE has no batch.
         if (targets.isEmpty()) {
             log.info("Scheduled run for {} {} has no suites — completing as empty success (schedule {})",
                     schedule.getScopeType(), schedule.getScopeId(), scheduleId);
+            if (schedule.getScopeType() != ScheduleScopeType.SUITE) {
+                ScopeDisplay display = resolveScopeDisplay(schedule.getScopeType(), schedule.getScopeId());
+                BatchScopeType batchScope = schedule.getScopeType() == ScheduleScopeType.COLLECTION
+                        ? BatchScopeType.COLLECTION
+                        : BatchScopeType.PROJECT;
+                UUID batchId = batchExecutionService.createScheduledBatch(
+                        batchScope,
+                        schedule.getScopeId(),
+                        display.name(),
+                        schedule.getEnvironmentId(),
+                        scheduleId,
+                        List.of());
+                batchExecutionService.executeEmptyBatch(batchId);
+            }
             touchScheduleTimestamps(schedule);
             return;
         }
 
-        List<SuiteBatchRunResult> results = executeSuitesSequentially(
-                targets,
-                schedule.getEnvironmentId(),
-                TriggerType.SCHEDULED,
-                scheduleId);
+        if (schedule.getScopeType() == ScheduleScopeType.SUITE) {
+            List<SuiteBatchRunResult> results = executeSuitesSequentially(
+                    targets,
+                    schedule.getEnvironmentId(),
+                    TriggerType.SCHEDULED,
+                    scheduleId);
+            logScheduledResults(scheduleId, results);
+        } else {
+            ScopeDisplay display = resolveScopeDisplay(schedule.getScopeType(), schedule.getScopeId());
+            BatchScopeType batchScope = schedule.getScopeType() == ScheduleScopeType.COLLECTION
+                    ? BatchScopeType.COLLECTION
+                    : BatchScopeType.PROJECT;
+            UUID batchId = batchExecutionService.createScheduledBatch(
+                    batchScope,
+                    schedule.getScopeId(),
+                    display.name(),
+                    schedule.getEnvironmentId(),
+                    scheduleId,
+                    targets);
+            batchExecutionService.executeBatch(
+                    batchId,
+                    targets,
+                    schedule.getEnvironmentId(),
+                    TriggerType.SCHEDULED,
+                    scheduleId);
+        }
+
+        touchScheduleTimestamps(schedule);
+    }
+
+    private void logScheduledResults(UUID scheduleId, List<SuiteBatchRunResult> results) {
         for (SuiteBatchRunResult result : results) {
             if ("FAILURE".equals(result.getStatus())) {
                 log.error("Scheduled suite {} failed for schedule {}: {}",
@@ -271,8 +316,6 @@ public class ScheduleService {
                         result.getSuiteId(), scheduleId, result.getStatus());
             }
         }
-
-        touchScheduleTimestamps(schedule);
     }
 
     /**
@@ -283,43 +326,87 @@ public class ScheduleService {
                                                                 UUID environmentId,
                                                                 TriggerType triggerType,
                                                                 UUID scheduleId) {
+        return executeSuitesSequentially(suites, environmentId, triggerType, scheduleId,
+                null, null, null, null);
+    }
+
+    public List<SuiteBatchRunResult> executeSuitesSequentially(List<TestSuite> suites,
+                                                                UUID environmentId,
+                                                                TriggerType triggerType,
+                                                                UUID scheduleId,
+                                                                UUID batchId,
+                                                                BooleanSupplier cancelChecker,
+                                                                BatchProgressListener progressListener,
+                                                                BatchExecutionRegistry registry) {
         List<SuiteBatchRunResult> results = new ArrayList<>();
         for (TestSuite suite : suites) {
+            if (cancelChecker != null && cancelChecker.getAsBoolean()) {
+                break;
+            }
+
             UUID runId = null;
             try {
                 ExecutionService.PreparedExecution prepared;
                 UUID envForRun;
                 if (environmentId != null) {
                     envForRun = environmentId;
-                    TestRun run = runService.createRun(suite.getId(), envForRun, triggerType, scheduleId);
+                    TestRun run = runService.createRun(suite.getId(), envForRun, triggerType, scheduleId, batchId);
                     runId = run.getId();
+                    if (registry != null && batchId != null) {
+                        registry.setCurrentRunId(batchId, runId);
+                    }
+                    if (progressListener != null && batchId != null) {
+                        progressListener.onSuiteStarted(batchId, suite.getId(), suite.getName(), runId);
+                    }
                     prepared = executionService.prepareSuiteRun(suite.getId(), environmentId);
                 } else {
                     prepared = executionService.prepareSuiteRun(suite.getId(), null);
                     envForRun = prepared.env() != null ? prepared.env().getId() : null;
-                    TestRun run = runService.createRun(suite.getId(), envForRun, triggerType, scheduleId);
+                    TestRun run = runService.createRun(suite.getId(), envForRun, triggerType, scheduleId, batchId);
                     runId = run.getId();
+                    if (registry != null && batchId != null) {
+                        registry.setCurrentRunId(batchId, runId);
+                    }
+                    if (progressListener != null && batchId != null) {
+                        progressListener.onSuiteStarted(batchId, suite.getId(), suite.getName(), runId);
+                    }
                 }
 
                 SuiteExecutionResult executionResult = executionService.executePreparedNonInteractive(prepared);
                 runService.completeRun(runId, executionResult);
-                results.add(SuiteBatchRunResult.builder()
+                SuiteBatchRunResult result = SuiteBatchRunResult.builder()
                         .suiteId(suite.getId())
                         .suiteName(suite.getName())
                         .runId(runId)
                         .status(executionResult.getStatus())
-                        .build());
+                        .build();
+                results.add(result);
+                if (progressListener != null && batchId != null) {
+                    progressListener.onSuiteCompleted(batchId, result);
+                }
             } catch (Exception e) {
                 if (runId != null) {
                     runService.failRun(runId, e.getMessage());
                 }
-                results.add(SuiteBatchRunResult.builder()
+                SuiteBatchRunResult result = SuiteBatchRunResult.builder()
                         .suiteId(suite.getId())
                         .suiteName(suite.getName())
                         .runId(runId)
                         .status("FAILURE")
                         .errorMessage(e.getMessage())
-                        .build());
+                        .build();
+                results.add(result);
+                if (progressListener != null && batchId != null) {
+                    progressListener.onSuiteCompleted(batchId, result);
+                }
+            } finally {
+                if (registry != null && batchId != null) {
+                    registry.setCurrentRunId(batchId, null);
+                }
+            }
+
+            if (cancelChecker != null && cancelChecker.getAsBoolean()) {
+                break;
             }
         }
         return results;

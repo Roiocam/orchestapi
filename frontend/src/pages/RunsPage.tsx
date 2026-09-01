@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Table,
   Button,
@@ -28,14 +29,18 @@ import {
   PlusOutlined,
   SearchOutlined,
   CloseCircleFilled,
+  StopOutlined,
 } from '@ant-design/icons'
 import type { FilterDropdownProps } from 'antd/es/table/interface'
 import type { Dayjs } from 'dayjs'
 import cronstrue from 'cronstrue'
 import type { PageResponse } from '../types/environment'
 import type { TestRunResponse, RunScheduleResponse, RunScheduleRequest, CronPreviewResponse, RunListParams } from '../types/run'
+import type { BatchRunResponse, BatchRunDetailResponse } from '../types/batch'
+import type { CollectionSuiteRunResult } from '../types/project'
 import type { SuiteExecutionResult } from '../services/testSuiteApi'
 import { runApi } from '../services/runApi'
+import { batchApi } from '../services/batchApi'
 import { scheduleApi } from '../services/scheduleApi'
 import { testSuiteApi } from '../services/testSuiteApi'
 import { environmentApi } from '../services/environmentApi'
@@ -140,6 +145,19 @@ function formatDuration(ms: number): string {
 
 // ────────────────── Main Component ──────────────────
 export default function RunsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') ?? 'history'
+  const urlBatchId = searchParams.get('batchId')
+
+  const setActiveTab = useCallback((tab: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', tab)
+      if (tab !== 'batches') next.delete('batchId')
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
   // ──── Run History state ────
   const [data, setData] = useState<PageResponse<TestRunResponse>>({
     content: [],
@@ -164,6 +182,30 @@ export default function RunsPage() {
   const [viewDrawer, setViewDrawer] = useState<string | null>(null)
   const [viewDetail, setViewDetail] = useState<TestRunResponse | null>(null)
   const [viewLoading, setViewLoading] = useState(false)
+
+  // ──── Batches state ────
+  const [batchData, setBatchData] = useState<PageResponse<BatchRunResponse>>({
+    content: [],
+    page: 0,
+    size: 10,
+    totalElements: 0,
+    totalPages: 0,
+  })
+  const [batchLoading, setBatchLoading] = useState(false)
+  const [batchPage, setBatchPage] = useState(1)
+  const [batchPageSize, setBatchPageSize] = useState(10)
+  const [batchSortBy, setBatchSortBy] = useState('startedAt')
+  const [batchSortDir, setBatchSortDir] = useState<'asc' | 'desc'>('desc')
+  const [batchTriggerFilter, setBatchTriggerFilter] = useState<string | undefined>(undefined)
+  const [batchStatusFilter, setBatchStatusFilter] = useState<string | undefined>(undefined)
+  const [batchDateRange, setBatchDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null)
+  const [batchRefreshKey, setBatchRefreshKey] = useState(0)
+
+  const [batchDrawer, setBatchDrawer] = useState<string | null>(null)
+  const [batchDetail, setBatchDetail] = useState<BatchRunDetailResponse | null>(null)
+  const [batchDetailLoading, setBatchDetailLoading] = useState(false)
+  const [batchCancelling, setBatchCancelling] = useState(false)
+  const batchStreamRef = useRef<(() => void) | null>(null)
 
   // ──── Schedules state ────
   const [scheduleData, setScheduleData] = useState<PageResponse<RunScheduleResponse>>({
@@ -226,6 +268,44 @@ export default function RunsPage() {
     load()
     return () => { cancelled = true }
   }, [currentPage, pageSize, sortBy, sortDir, appliedFilters, refreshKey, triggerFilter, dateRange])
+
+  // ──── Batches: data fetch ────
+  useEffect(() => {
+    if (activeTab !== 'batches') return
+    let cancelled = false
+    const load = async () => {
+      setBatchLoading(true)
+      try {
+        const result = await batchApi.list({
+          page: batchPage - 1,
+          size: batchPageSize,
+          sortBy: batchSortBy,
+          sortDir: batchSortDir,
+          triggerType: batchTriggerFilter,
+          status: batchStatusFilter,
+          from: batchDateRange?.[0]?.startOf('day').toISOString(),
+          to: batchDateRange?.[1]?.endOf('day').toISOString(),
+        })
+        if (!cancelled) setBatchData(result)
+      } catch {
+        if (!cancelled) message.error('Failed to load batches')
+      } finally {
+        if (!cancelled) setBatchLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [
+    activeTab,
+    batchPage,
+    batchPageSize,
+    batchSortBy,
+    batchSortDir,
+    batchTriggerFilter,
+    batchStatusFilter,
+    batchDateRange,
+    batchRefreshKey,
+  ])
 
   // ──── Schedules: data fetch ────
   useEffect(() => {
@@ -315,6 +395,140 @@ export default function RunsPage() {
       setTimeout(() => URL.revokeObjectURL(url), 100)
     } catch {
       message.error('Failed to export run')
+    }
+  }
+
+  const loadBatchDetail = useCallback(async (id: string) => {
+    setBatchDetailLoading(true)
+    setBatchDetail(null)
+    try {
+      const detail = await batchApi.get(id)
+      setBatchDetail(detail)
+      return detail
+    } catch {
+      message.error('Failed to load batch details')
+      setBatchDrawer(null)
+      return null
+    } finally {
+      setBatchDetailLoading(false)
+    }
+  }, [])
+
+  const handleViewBatch = useCallback(async (id: string) => {
+    setBatchDrawer(id)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', 'batches')
+      next.set('batchId', id)
+      return next
+    }, { replace: true })
+    await loadBatchDetail(id)
+  }, [loadBatchDetail, setSearchParams])
+
+  useEffect(() => {
+    if (urlBatchId && activeTab === 'batches' && batchDrawer !== urlBatchId) {
+      setBatchDrawer(urlBatchId)
+      loadBatchDetail(urlBatchId)
+    }
+  }, [urlBatchId, activeTab, batchDrawer, loadBatchDetail])
+
+  useEffect(() => {
+    if (!batchDrawer || batchDetail?.batch.status !== 'RUNNING') {
+      batchStreamRef.current?.()
+      batchStreamRef.current = null
+      return
+    }
+
+    batchStreamRef.current?.()
+    batchStreamRef.current = batchApi.stream(batchDrawer, {
+      onSuiteStarted: (data) => {
+        setBatchDetail((prev) => {
+          if (!prev) return prev
+          const runs = [...prev.runs]
+          const idx = runs.findIndex((r) => r.suiteId === data.suiteId)
+          const entry: CollectionSuiteRunResult = {
+            suiteId: data.suiteId,
+            suiteName: data.suiteName,
+            runId: data.runId,
+            status: 'RUNNING',
+            errorMessage: null,
+          }
+          if (idx >= 0) runs[idx] = entry
+          else runs.push(entry)
+          return { ...prev, runs }
+        })
+      },
+      onSuiteCompleted: (data) => {
+        setBatchDetail((prev) => {
+          if (!prev) return prev
+          const runs = prev.runs.map((r) =>
+            r.suiteId === data.suiteId
+              ? {
+                  ...r,
+                  runId: data.runId,
+                  status: data.status,
+                  errorMessage: data.errorMessage ?? null,
+                }
+              : r,
+          )
+          return { ...prev, runs }
+        })
+      },
+      onBatchComplete: (data) => {
+        setBatchDetail((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            batch: {
+              ...prev.batch,
+              status: data.status as BatchRunResponse['status'],
+              succeeded: data.succeeded,
+              failed: data.failed,
+              totalSuites: data.totalSuites,
+            },
+          }
+        })
+        setBatchRefreshKey((k) => k + 1)
+      },
+      onBatchError: () => {
+        setBatchRefreshKey((k) => k + 1)
+      },
+    })
+
+    return () => {
+      batchStreamRef.current?.()
+      batchStreamRef.current = null
+    }
+  }, [batchDrawer, batchDetail?.batch.status])
+
+  const closeBatchDrawer = useCallback(() => {
+    batchStreamRef.current?.()
+    batchStreamRef.current = null
+    setBatchDrawer(null)
+    setBatchDetail(null)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('batchId')
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const handleCancelBatch = async (id: string) => {
+    setBatchCancelling(true)
+    try {
+      const updated = await batchApi.cancel(id)
+      setBatchDetail((prev) => (prev ? { ...prev, batch: updated } : prev))
+      message.info('Batch cancellation requested')
+      setBatchRefreshKey((k) => k + 1)
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { error?: string } } }
+        message.error(axiosErr.response?.data?.error ?? 'Failed to cancel batch')
+      } else {
+        message.error('Failed to cancel batch')
+      }
+    } finally {
+      setBatchCancelling(false)
     }
   }
 
@@ -557,6 +771,88 @@ export default function RunsPage() {
     },
   ]
 
+  // ──── Batches columns ────
+  const batchColumns = [
+    {
+      title: 'S.No',
+      key: 'sno',
+      width: 60,
+      render: (_: unknown, __: BatchRunResponse, index: number) => (
+        <span style={{ color: '#888' }}>{(batchPage - 1) * batchPageSize + index + 1}</span>
+      ),
+    },
+    {
+      title: 'Scope',
+      key: 'scope',
+      render: (_: unknown, record: BatchRunResponse) => (
+        <Space size={6} wrap>
+          <Tag>{record.scopeType}</Tag>
+          <strong>{record.scopeName}</strong>
+        </Space>
+      ),
+    },
+    {
+      title: 'Trigger',
+      dataIndex: 'triggerType',
+      key: 'triggerType',
+      width: 100,
+      render: (trigger: BatchRunResponse['triggerType']) => (
+        <Tag color={TRIGGER_TAG_COLOR[trigger] ?? 'default'}>{trigger}</Tag>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 140,
+      render: (status: BatchRunResponse['status']) => (
+        <Tag color={STATUS_TAG_COLOR[status] ?? 'default'}>{status.replace('_', ' ')}</Tag>
+      ),
+    },
+    {
+      title: 'Suites',
+      key: 'suites',
+      width: 120,
+      render: (_: unknown, record: BatchRunResponse) => (
+        <span>
+          <Text type="success">{record.succeeded}</Text>
+          {' / '}
+          <Text type="danger">{record.failed}</Text>
+          {' / '}
+          {record.totalSuites}
+        </span>
+      ),
+    },
+    {
+      title: 'Started At',
+      dataIndex: 'startedAt',
+      key: 'startedAt',
+      width: 170,
+      sorter: true,
+      sortOrder: batchSortBy === 'startedAt'
+        ? (batchSortDir === 'asc' ? ('ascend' as const) : ('descend' as const))
+        : null,
+      render: (v: string | null) => (v ? new Date(v).toLocaleString() : '\u2014'),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 80,
+      render: (_: unknown, record: BatchRunResponse) => (
+        <Tooltip title="View">
+          <Button
+            type="text"
+            icon={<EyeOutlined />}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleViewBatch(record.id)
+            }}
+          />
+        </Tooltip>
+      ),
+    },
+  ]
+
   // ──── Schedules columns ────
   const scheduleColumns = [
     {
@@ -665,12 +961,13 @@ export default function RunsPage() {
           <div className="page-header-kicker">Execution</div>
           <h1 className="page-header-title">Runs</h1>
           <p className="page-header-desc">
-            History of suite executions and schedules that trigger them.
+            Suite run history, collection/project batches, and schedules.
           </p>
         </div>
       </div>
       <Tabs
-        defaultActiveKey="history"
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
           {
             key: 'history',
@@ -781,6 +1078,83 @@ export default function RunsPage() {
             ),
           },
           {
+            key: 'batches',
+            label: 'Batches',
+            children: (
+              <div>
+                <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <Select
+                    placeholder="Trigger type"
+                    value={batchTriggerFilter}
+                    onChange={(val) => { setBatchTriggerFilter(val || undefined); setBatchPage(1) }}
+                    allowClear
+                    style={{ width: 150 }}
+                    size="small"
+                    options={[
+                      { value: 'MANUAL', label: 'Manual' },
+                      { value: 'SCHEDULED', label: 'Scheduled' },
+                    ]}
+                  />
+                  <Select
+                    placeholder="Status"
+                    value={batchStatusFilter}
+                    onChange={(val) => { setBatchStatusFilter(val || undefined); setBatchPage(1) }}
+                    allowClear
+                    style={{ width: 160 }}
+                    size="small"
+                    options={[
+                      { value: 'RUNNING', label: 'Running' },
+                      { value: 'SUCCESS', label: 'Success' },
+                      { value: 'PARTIAL_FAILURE', label: 'Partial Failure' },
+                      { value: 'FAILURE', label: 'Failure' },
+                      { value: 'CANCELLED', label: 'Cancelled' },
+                    ]}
+                  />
+                  <RangePicker
+                    size="small"
+                    value={batchDateRange as [Dayjs, Dayjs] | null}
+                    onChange={(dates) => { setBatchDateRange(dates); setBatchPage(1) }}
+                    style={{ width: 260 }}
+                  />
+                </div>
+
+                <Table
+                  columns={batchColumns}
+                  dataSource={batchData.content}
+                  rowKey="id"
+                  loading={batchLoading}
+                  style={{ background: '#fff', borderRadius: 8, padding: '0 0 8px' }}
+                  onRow={(record) => ({
+                    onClick: () => handleViewBatch(record.id),
+                    style: { cursor: 'pointer' },
+                  })}
+                  pagination={{
+                    current: batchPage,
+                    pageSize: batchPageSize,
+                    total: batchData.totalElements,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '50'],
+                    showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
+                    style: { padding: '0 16px' },
+                  }}
+                  onChange={(pagination, _filters, sorter) => {
+                    setBatchPage(pagination.current ?? 1)
+                    setBatchPageSize(pagination.pageSize ?? 10)
+                    if (!Array.isArray(sorter)) {
+                      if (sorter.field && sorter.order) {
+                        setBatchSortBy(sorter.field as string)
+                        setBatchSortDir(sorter.order === 'descend' ? 'desc' : 'asc')
+                      } else {
+                        setBatchSortBy('startedAt')
+                        setBatchSortDir('desc')
+                      }
+                    }
+                  }}
+                />
+              </div>
+            ),
+          },
+          {
             key: 'schedules',
             label: 'Schedules',
             children: (
@@ -820,6 +1194,118 @@ export default function RunsPage() {
           },
         ]}
       />
+
+      {/* Batch Detail Drawer */}
+      <Drawer
+        title="Batch Details"
+        open={!!batchDrawer}
+        onClose={closeBatchDrawer}
+        width={640}
+        destroyOnClose
+        extra={
+          batchDetail?.batch.status === 'RUNNING' ? (
+            <Button
+              danger
+              size="small"
+              icon={<StopOutlined />}
+              loading={batchCancelling}
+              onClick={() => batchDrawer && handleCancelBatch(batchDrawer)}
+            >
+              Cancel
+            </Button>
+          ) : null
+        }
+      >
+        {batchDetailLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+            <Spin />
+          </div>
+        ) : batchDetail ? (
+          <div>
+            <Space direction="vertical" size={4} style={{ marginBottom: 20, width: '100%' }}>
+              <Space wrap>
+                <Tag>{batchDetail.batch.scopeType}</Tag>
+                <strong>{batchDetail.batch.scopeName}</strong>
+              </Space>
+              <Space wrap>
+                <Tag color={STATUS_TAG_COLOR[batchDetail.batch.status] ?? 'default'}>
+                  {batchDetail.batch.status.replace('_', ' ')}
+                </Tag>
+                <Tag color={TRIGGER_TAG_COLOR[batchDetail.batch.triggerType] ?? 'default'}>
+                  {batchDetail.batch.triggerType}
+                </Tag>
+                <Text type="secondary">
+                  {batchDetail.batch.succeeded} succeeded, {batchDetail.batch.failed} failed
+                  {' / '}{batchDetail.batch.totalSuites} total
+                </Text>
+              </Space>
+              {batchDetail.batch.startedAt && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Started {new Date(batchDetail.batch.startedAt).toLocaleString()}
+                  {batchDetail.batch.completedAt && (
+                    <> · Completed {new Date(batchDetail.batch.completedAt).toLocaleString()}</>
+                  )}
+                </Text>
+              )}
+            </Space>
+
+            <Table
+              size="small"
+              rowKey="suiteId"
+              pagination={false}
+              dataSource={batchDetail.runs}
+              columns={[
+                {
+                  title: 'Suite',
+                  dataIndex: 'suiteName',
+                  key: 'suiteName',
+                },
+                {
+                  title: 'Status',
+                  dataIndex: 'status',
+                  key: 'status',
+                  width: 130,
+                  render: (status: string) => (
+                    <Tag color={STATUS_TAG_COLOR[status] ?? 'default'}>
+                      {status.replace('_', ' ')}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: 'Actions',
+                  key: 'actions',
+                  width: 70,
+                  render: (_: unknown, record: CollectionSuiteRunResult) =>
+                    record.runId ? (
+                      <Tooltip title="View run">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EyeOutlined />}
+                          onClick={() => {
+                            closeBatchDrawer()
+                            handleViewRun(record.runId!)
+                          }}
+                        />
+                      </Tooltip>
+                    ) : null,
+                },
+              ]}
+              expandable={{
+                expandedRowRender: (record) =>
+                  record.errorMessage ? (
+                    <Text type="danger" style={{ fontSize: 12 }}>{record.errorMessage}</Text>
+                  ) : null,
+                rowExpandable: (record) => !!record.errorMessage,
+              }}
+            />
+          </div>
+        ) : (
+          <div style={{ color: '#888', textAlign: 'center', padding: 40 }}>
+            No batch data available.
+          </div>
+        )}
+      </Drawer>
 
       {/* View Run Drawer */}
       <Drawer

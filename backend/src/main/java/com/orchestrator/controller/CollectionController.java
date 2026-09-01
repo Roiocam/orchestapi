@@ -1,8 +1,8 @@
 package com.orchestrator.controller;
 
+import com.orchestrator.dto.BatchStartResponse;
 import com.orchestrator.dto.CollectionRequest;
 import com.orchestrator.dto.CollectionResponse;
-import com.orchestrator.dto.CollectionRunResponse;
 import com.orchestrator.dto.RunRequest;
 import com.orchestrator.service.CollectionService;
 import jakarta.validation.Valid;
@@ -48,8 +48,8 @@ public class CollectionController {
     }
 
     @PostMapping("/{id}/run")
-    public CollectionRunResponse run(@PathVariable UUID id,
-                                     @RequestBody(required = false) RunRequest request) {
-        return service.run(id, request);
+    public ResponseEntity<BatchStartResponse> run(@PathVariable UUID id,
+                                                  @RequestBody(required = false) RunRequest request) {
+        return ResponseEntity.accepted().body(service.run(id, request));
     }
 }
