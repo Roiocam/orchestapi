@@ -56,6 +56,76 @@ public class RunService {
         return repository.save(run);
     }
 
+    /**
+     * Pre-create one PENDING run per suite so batch detail can list the full plan immediately.
+     */
+    @Transactional
+    public void createPendingBatchRuns(UUID batchId,
+                                       List<TestSuite> suites,
+                                       UUID environmentId,
+                                       TriggerType triggerType,
+                                       UUID scheduleId) {
+        LocalDateTime now = LocalDateTime.now();
+        for (TestSuite suite : suites) {
+            UUID envId = environmentId != null ? environmentId : suite.getDefaultEnvironmentId();
+            if (envId == null) {
+                log.warn("Skipping PENDING run for suite {} in batch {} — no environment resolved",
+                        suite.getId(), batchId);
+                continue;
+            }
+            repository.save(TestRun.builder()
+                    .suiteId(suite.getId())
+                    .environmentId(envId)
+                    .triggerType(triggerType)
+                    .scheduleId(scheduleId)
+                    .batchId(batchId)
+                    .status(RunStatus.PENDING)
+                    .startedAt(now)
+                    .totalDurationMs(0L)
+                    .build());
+        }
+    }
+
+    /**
+     * Prefer promoting a pre-created PENDING batch run; otherwise create a RUNNING run.
+     * If the pending stub was already cancelled, return it without starting.
+     */
+    @Transactional
+    public TestRun startBatchRun(UUID suiteId, UUID environmentId, TriggerType triggerType,
+                                 UUID scheduleId, UUID batchId) {
+        if (batchId != null) {
+            var pending = repository.findByBatchIdAndSuiteIdAndStatus(batchId, suiteId, RunStatus.PENDING);
+            if (pending.isPresent()) {
+                TestRun run = pending.get();
+                run.setStatus(RunStatus.RUNNING);
+                run.setStartedAt(LocalDateTime.now());
+                if (environmentId != null) {
+                    run.setEnvironmentId(environmentId);
+                }
+                return repository.save(run);
+            }
+            var cancelled = repository.findByBatchIdAndSuiteIdAndStatus(batchId, suiteId, RunStatus.CANCELLED);
+            if (cancelled.isPresent()) {
+                return cancelled.get();
+            }
+        }
+        return createRun(suiteId, environmentId, triggerType, scheduleId, batchId);
+    }
+
+    @Transactional
+    public void cancelPendingRunsForBatch(UUID batchId) {
+        if (batchId == null) return;
+        LocalDateTime now = LocalDateTime.now();
+        List<TestRun> pending = repository.findByBatchIdAndStatus(batchId, RunStatus.PENDING);
+        for (TestRun run : pending) {
+            run.setStatus(RunStatus.CANCELLED);
+            run.setCompletedAt(now);
+        }
+        if (!pending.isEmpty()) {
+            repository.saveAll(pending);
+        }
+    }
+
     @Transactional
     public void completeRun(UUID runId, SuiteExecutionResult result) {
         TestRun run = repository.findById(runId)
@@ -161,8 +231,15 @@ public class RunService {
 
     @Transactional(readOnly = true)
     public List<TestRunResponse> findDetailsByBatchId(UUID batchId) {
-        return repository.findByBatchIdOrderByStartedAtAsc(batchId).stream()
+        return repository.findByBatchIdOrderByCreatedAtAsc(batchId).stream()
                 .map(this::toDetailResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<TestRunResponse> findListByBatchId(UUID batchId) {
+        return repository.findByBatchIdOrderByCreatedAtAsc(batchId).stream()
+                .map(this::toListResponse)
                 .toList();
     }
 

@@ -20,7 +20,7 @@ import {
 } from '@ant-design/icons'
 import type { TFunction } from 'i18next'
 import type { BatchRunDetailResponse, BatchRunResponse } from '../types/batch'
-import type { CollectionSuiteRunResult } from '../types/project'
+import type { TestRunResponse } from '../types/run'
 import type { SuiteExecutionResult, StepExecutionResult } from '../services/testSuiteApi'
 import { batchApi } from '../services/batchApi'
 import { runApi } from '../services/runApi'
@@ -30,6 +30,7 @@ import { formatDateTime } from '../utils/datetime'
 const { Text, Title } = Typography
 
 const STATUS_TAG_COLOR: Record<string, string> = {
+  PENDING: 'default',
   SUCCESS: 'green',
   FAILURE: 'red',
   PARTIAL_FAILURE: 'orange',
@@ -40,6 +41,14 @@ const STATUS_TAG_COLOR: Record<string, string> = {
 const TRIGGER_TAG_COLOR: Record<string, string> = {
   MANUAL: 'default',
   SCHEDULED: 'purple',
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const mins = Math.floor(ms / 60_000)
+  const secs = ((ms % 60_000) / 1000).toFixed(0)
+  return `${mins}m ${secs}s`
 }
 
 function translateStatus(status: string, t: TFunction): string {
@@ -69,18 +78,20 @@ export default function BatchDetailPage() {
   const [liveResult, setLiveResult] = useState<SuiteExecutionResult | null>(null)
   const runStreamRef = useRef<(() => void) | null>(null)
 
-  const loadDetail = useCallback(async (batchId: string) => {
-    setLoading(true)
+  const loadDetail = useCallback(async (batchId: string, opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true)
     try {
       const data = await batchApi.get(batchId)
       setDetail(data)
       return data
     } catch {
-      message.error(t('pages.batchDetail.failedLoad'))
-      setDetail(null)
+      if (!opts?.silent) {
+        message.error(t('pages.batchDetail.failedLoad'))
+        setDetail(null)
+      }
       return null
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }, [t])
 
@@ -101,17 +112,34 @@ export default function BatchDetailPage() {
       onSuiteStarted: (data) => {
         setDetail((prev) => {
           if (!prev) return prev
-          const runs = [...prev.runs]
-          const idx = runs.findIndex((r) => r.suiteId === data.suiteId)
-          const entry: CollectionSuiteRunResult = {
-            suiteId: data.suiteId,
-            suiteName: data.suiteName,
-            runId: data.runId,
-            status: 'RUNNING',
-            errorMessage: null,
+          const runs = prev.runs.map((r) =>
+            r.suiteId === data.suiteId
+              ? {
+                  ...r,
+                  id: data.runId,
+                  status: 'RUNNING' as const,
+                  startedAt: new Date().toISOString(),
+                }
+              : r,
+          )
+          // If suite was not pre-listed (legacy batches), append it
+          if (!runs.some((r) => r.suiteId === data.suiteId)) {
+            runs.push({
+              id: data.runId,
+              suiteId: data.suiteId,
+              suiteName: data.suiteName,
+              environmentId: prev.batch.environmentId ?? '',
+              environmentName: '',
+              triggerType: prev.batch.triggerType,
+              scheduleId: prev.batch.scheduleId,
+              status: 'RUNNING',
+              startedAt: new Date().toISOString(),
+              completedAt: null,
+              totalDurationMs: 0,
+              resultData: null,
+              createdAt: new Date().toISOString(),
+            })
           }
-          if (idx >= 0) runs[idx] = entry
-          else runs.push(entry)
           return { ...prev, runs }
         })
       },
@@ -122,14 +150,15 @@ export default function BatchDetailPage() {
             r.suiteId === data.suiteId
               ? {
                   ...r,
-                  runId: data.runId,
-                  status: data.status,
-                  errorMessage: data.errorMessage ?? null,
+                  id: data.runId,
+                  status: data.status as TestRunResponse['status'],
                 }
               : r,
           )
           return { ...prev, runs }
         })
+        // Refresh so startedAt / totalDurationMs match persisted run list fields
+        loadDetail(id, { silent: true })
       },
       onBatchComplete: (data) => {
         setDetail((prev) => {
@@ -145,6 +174,7 @@ export default function BatchDetailPage() {
             },
           }
         })
+        loadDetail(id, { silent: true })
       },
       onBatchError: () => {
         if (id) loadDetail(id)
@@ -194,6 +224,7 @@ export default function BatchDetailPage() {
       const updated = await batchApi.cancel(id)
       setDetail((prev) => (prev ? { ...prev, batch: updated } : prev))
       message.info(t('components.runCollection.cancellationRequested'))
+      await loadDetail(id, { silent: true })
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
@@ -358,7 +389,7 @@ export default function BatchDetailPage() {
         <div className="product-panel-body" style={{ paddingTop: 0 }}>
           <Table
             size="small"
-            rowKey="suiteId"
+            rowKey="id"
             pagination={false}
             dataSource={runs}
             columns={[
@@ -366,6 +397,12 @@ export default function BatchDetailPage() {
                 title: t('pages.batchDetail.columnSuite'),
                 dataIndex: 'suiteName',
                 key: 'suiteName',
+              },
+              {
+                title: t('pages.runs.columnEnvironment'),
+                dataIndex: 'environmentName',
+                key: 'environmentName',
+                width: 120,
               },
               {
                 title: t('pages.runs.columnStatus'),
@@ -379,29 +416,38 @@ export default function BatchDetailPage() {
                 ),
               },
               {
+                title: t('pages.runs.columnDuration'),
+                dataIndex: 'totalDurationMs',
+                key: 'totalDurationMs',
+                width: 100,
+                render: (ms: number | null, record: TestRunResponse) =>
+                  record.status === 'PENDING' || ms == null ? '\u2014' : formatDuration(ms),
+              },
+              {
+                title: t('pages.runs.columnStartedAt'),
+                dataIndex: 'startedAt',
+                key: 'startedAt',
+                width: 170,
+                render: (v: string | null, record: TestRunResponse) =>
+                  record.status === 'PENDING' ? '\u2014' : formatDateTime(v),
+              },
+              {
                 title: t('common.actions'),
                 key: 'actions',
                 width: 80,
-                render: (_: unknown, record: CollectionSuiteRunResult) =>
-                  record.runId ? (
+                render: (_: unknown, record: TestRunResponse) =>
+                  record.id ? (
                     <Tooltip title={t('pages.batchDetail.viewRun')}>
                       <Button
                         type="text"
                         size="small"
                         icon={<EyeOutlined />}
-                        onClick={() => handleViewRun(record.runId!)}
+                        onClick={() => handleViewRun(record.id)}
                       />
                     </Tooltip>
                   ) : null,
               },
             ]}
-            expandable={{
-              expandedRowRender: (record) =>
-                record.errorMessage ? (
-                  <Text type="danger" style={{ fontSize: 12 }}>{record.errorMessage}</Text>
-                ) : null,
-              rowExpandable: (record) => !!record.errorMessage,
-            }}
           />
         </div>
       </div>

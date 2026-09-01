@@ -154,11 +154,11 @@ class ScheduleBatchRunTest {
         TestSuite s3 = TestSuite.builder().id(UUID.randomUUID()).name("c").build();
         Environment env = Environment.builder().id(envId).name("dev").build();
 
-        when(runService.createRun(s1.getId(), envId, TriggerType.MANUAL, null, batchId))
+        when(runService.startBatchRun(s1.getId(), envId, TriggerType.MANUAL, null, batchId))
                 .thenReturn(TestRun.builder().id(run1).build());
-        when(runService.createRun(s2.getId(), envId, TriggerType.MANUAL, null, batchId))
+        when(runService.startBatchRun(s2.getId(), envId, TriggerType.MANUAL, null, batchId))
                 .thenReturn(TestRun.builder().id(run2).build());
-        when(runService.createRun(s3.getId(), envId, TriggerType.MANUAL, null, batchId))
+        when(runService.startBatchRun(s3.getId(), envId, TriggerType.MANUAL, null, batchId))
                 .thenReturn(TestRun.builder().id(run3).build());
 
         ExecutionService.PreparedExecution prepared =
@@ -192,7 +192,7 @@ class ScheduleBatchRunTest {
         TestSuite s2 = TestSuite.builder().id(UUID.randomUUID()).name("b").build();
         Environment env = Environment.builder().id(envId).name("dev").build();
 
-        when(runService.createRun(s1.getId(), envId, TriggerType.MANUAL, null, batchId))
+        when(runService.startBatchRun(s1.getId(), envId, TriggerType.MANUAL, null, batchId))
                 .thenReturn(TestRun.builder().id(run1).build());
 
         ExecutionService.PreparedExecution prepared =
@@ -207,8 +207,8 @@ class ScheduleBatchRunTest {
                 () -> checks.incrementAndGet() > 2, null, null);
 
         assertEquals(1, results.size());
-        verify(runService).createRun(s1.getId(), envId, TriggerType.MANUAL, null, batchId);
-        verify(runService, never()).createRun(s2.getId(), envId, TriggerType.MANUAL, null, batchId);
+        verify(runService).startBatchRun(s1.getId(), envId, TriggerType.MANUAL, null, batchId);
+        verify(runService, never()).startBatchRun(s2.getId(), envId, TriggerType.MANUAL, null, batchId);
     }
 
     @Test
@@ -220,7 +220,7 @@ class ScheduleBatchRunTest {
         ExecutionService.PreparedExecution prepared =
                 new ExecutionService.PreparedExecution(List.of(), java.util.Map.of(), env, null);
 
-        when(runService.createRun(suite.getId(), envId, TriggerType.MANUAL, null, null))
+        when(runService.startBatchRun(suite.getId(), envId, TriggerType.MANUAL, null, null))
                 .thenReturn(TestRun.builder().id(runId).build());
         when(executionService.prepareSuiteRun(suite.getId(), envId)).thenReturn(prepared);
         when(executionService.executePreparedNonInteractive(eq(prepared), any()))
@@ -229,7 +229,7 @@ class ScheduleBatchRunTest {
         scheduleService.executeSuitesSequentially(List.of(suite), envId, TriggerType.MANUAL, null);
 
         var order = inOrder(runService, executionService);
-        order.verify(runService).createRun(suite.getId(), envId, TriggerType.MANUAL, null, null);
+        order.verify(runService).startBatchRun(suite.getId(), envId, TriggerType.MANUAL, null, null);
         order.verify(executionService).prepareSuiteRun(suite.getId(), envId);
         order.verify(executionService).executePreparedNonInteractive(eq(prepared), any());
         order.verify(runService).completeRun(eq(runId), any());
@@ -245,7 +245,7 @@ class ScheduleBatchRunTest {
                 new ExecutionService.PreparedExecution(List.of(), java.util.Map.of(), env, null);
 
         when(executionService.prepareSuiteRun(suite.getId(), null)).thenReturn(prepared);
-        when(runService.createRun(suite.getId(), defaultEnvId, TriggerType.MANUAL, null, null))
+        when(runService.startBatchRun(suite.getId(), defaultEnvId, TriggerType.MANUAL, null, null))
                 .thenReturn(TestRun.builder().id(runId).build());
         when(executionService.executePreparedNonInteractive(eq(prepared), any()))
                 .thenReturn(SuiteExecutionResult.builder().status("SUCCESS").totalDurationMs(0).build());
@@ -254,7 +254,7 @@ class ScheduleBatchRunTest {
 
         var order = inOrder(executionService, runService);
         order.verify(executionService).prepareSuiteRun(suite.getId(), null);
-        order.verify(runService).createRun(suite.getId(), defaultEnvId, TriggerType.MANUAL, null, null);
+        order.verify(runService).startBatchRun(suite.getId(), defaultEnvId, TriggerType.MANUAL, null, null);
     }
 
     @Test

@@ -76,6 +76,7 @@ function translateScope(scope: string, t: TFunction): string {
 }
 
 const STATUS_TAG_COLOR: Record<string, string> = {
+  PENDING: 'default',
   SUCCESS: 'green',
   FAILURE: 'red',
   PARTIAL_FAILURE: 'orange',

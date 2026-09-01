@@ -15,6 +15,7 @@ import com.orchestrator.model.RunSchedule;
 import com.orchestrator.model.TestRun;
 import com.orchestrator.model.TestSuite;
 import com.orchestrator.model.enums.BatchScopeType;
+import com.orchestrator.model.enums.RunStatus;
 import com.orchestrator.model.enums.ScheduleNotifyOn;
 import com.orchestrator.model.enums.ScheduleScopeType;
 import com.orchestrator.model.enums.TriggerType;
@@ -408,8 +409,21 @@ public class ScheduleService {
                 UUID envForRun;
                 if (environmentId != null) {
                     envForRun = environmentId;
-                    TestRun run = runService.createRun(suite.getId(), envForRun, triggerType, scheduleId, batchId);
+                    TestRun run = runService.startBatchRun(suite.getId(), envForRun, triggerType, scheduleId, batchId);
                     runId = run.getId();
+                    if (run.getStatus() == RunStatus.CANCELLED) {
+                        SuiteBatchRunResult result = SuiteBatchRunResult.builder()
+                                .suiteId(suite.getId())
+                                .suiteName(suite.getName())
+                                .runId(runId)
+                                .status("CANCELLED")
+                                .build();
+                        results.add(result);
+                        if (progressListener != null && batchId != null) {
+                            progressListener.onSuiteCompleted(batchId, result);
+                        }
+                        continue;
+                    }
                     if (registry != null && batchId != null) {
                         registry.setCurrentRunId(batchId, runId);
                     }
@@ -420,8 +434,21 @@ public class ScheduleService {
                 } else {
                     prepared = executionService.prepareSuiteRun(suite.getId(), null);
                     envForRun = prepared.env() != null ? prepared.env().getId() : null;
-                    TestRun run = runService.createRun(suite.getId(), envForRun, triggerType, scheduleId, batchId);
+                    TestRun run = runService.startBatchRun(suite.getId(), envForRun, triggerType, scheduleId, batchId);
                     runId = run.getId();
+                    if (run.getStatus() == RunStatus.CANCELLED) {
+                        SuiteBatchRunResult result = SuiteBatchRunResult.builder()
+                                .suiteId(suite.getId())
+                                .suiteName(suite.getName())
+                                .runId(runId)
+                                .status("CANCELLED")
+                                .build();
+                        results.add(result);
+                        if (progressListener != null && batchId != null) {
+                            progressListener.onSuiteCompleted(batchId, result);
+                        }
+                        continue;
+                    }
                     if (registry != null && batchId != null) {
                         registry.setCurrentRunId(batchId, runId);
                     }

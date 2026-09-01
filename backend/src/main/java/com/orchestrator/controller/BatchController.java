@@ -3,8 +3,8 @@ package com.orchestrator.controller;
 import com.orchestrator.dto.BatchRunDetailResponse;
 import com.orchestrator.dto.BatchRunExportResponse;
 import com.orchestrator.dto.BatchRunResponse;
-import com.orchestrator.dto.CollectionSuiteRunResult;
 import com.orchestrator.dto.PageResponse;
+import com.orchestrator.dto.TestRunResponse;
 import com.orchestrator.exception.ConflictException;
 import com.orchestrator.model.BatchRun;
 import com.orchestrator.model.enums.BatchStatus;
@@ -92,14 +92,14 @@ public class BatchController {
                                     "totalSuites", detail.getBatch().getTotalSuites()),
                                     MediaType.APPLICATION_JSON));
 
-                    for (CollectionSuiteRunResult run : detail.getRuns()) {
-                        if (run.getRunId() != null) {
+                    for (TestRunResponse run : detail.getRuns()) {
+                        if (run.getId() != null) {
                             emitter.send(SseEmitter.event()
                                     .name("suite-completed")
                                     .data(Map.of(
-                                            "suiteId", run.getSuiteId().toString(),
+                                            "suiteId", run.getSuiteId(),
                                             "suiteName", run.getSuiteName(),
-                                            "runId", run.getRunId().toString(),
+                                            "runId", run.getId(),
                                             "status", run.getStatus()),
                                             MediaType.APPLICATION_JSON));
                         }
@@ -139,6 +139,7 @@ public class BatchController {
             runRegistry.cancelRun(currentRunId);
             runService.cancelRun(currentRunId);
         }
+        runService.cancelPendingRunsForBatch(id);
 
         return ResponseEntity.ok(batchRunService.findById(id).getBatch());
     }

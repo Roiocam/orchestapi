@@ -1,4 +1,3 @@
-import type { CollectionSuiteRunResult } from './project'
 import type { TestRunResponse } from './run'
 
 export type BatchScopeType = 'COLLECTION' | 'PROJECT'
@@ -24,7 +23,8 @@ export interface BatchRunResponse {
 
 export interface BatchRunDetailResponse {
   batch: BatchRunResponse
-  runs: CollectionSuiteRunResult[]
+  /** Same shape as run list items (resultData is null). */
+  runs: TestRunResponse[]
 }
 
 export interface BatchRunExportResponse {

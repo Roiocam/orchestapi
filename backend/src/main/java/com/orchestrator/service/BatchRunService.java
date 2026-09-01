@@ -3,18 +3,14 @@ package com.orchestrator.service;
 import com.orchestrator.dto.BatchRunDetailResponse;
 import com.orchestrator.dto.BatchRunExportResponse;
 import com.orchestrator.dto.BatchRunResponse;
-import com.orchestrator.dto.CollectionSuiteRunResult;
 import com.orchestrator.dto.PageResponse;
+import com.orchestrator.dto.TestRunResponse;
 import com.orchestrator.exception.NotFoundException;
 import com.orchestrator.model.BatchRun;
-import com.orchestrator.model.TestRun;
-import com.orchestrator.model.TestSuite;
 import com.orchestrator.model.enums.BatchScopeType;
 import com.orchestrator.model.enums.BatchStatus;
 import com.orchestrator.model.enums.TriggerType;
 import com.orchestrator.repository.BatchRunRepository;
-import com.orchestrator.repository.TestRunRepository;
-import com.orchestrator.repository.TestSuiteRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,8 +27,6 @@ import java.util.UUID;
 public class BatchRunService {
 
     private final BatchRunRepository repository;
-    private final TestRunRepository testRunRepository;
-    private final TestSuiteRepository suiteRepository;
     private final RunService runService;
 
     @Transactional
@@ -103,15 +97,7 @@ public class BatchRunService {
     public BatchRunDetailResponse findById(UUID id) {
         BatchRun batch = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Batch not found: " + id));
-        List<TestRun> childRuns = testRunRepository.findByBatchIdOrderByStartedAtAsc(id);
-        List<CollectionSuiteRunResult> runs = childRuns.stream()
-                .map(run -> CollectionSuiteRunResult.builder()
-                        .suiteId(run.getSuiteId())
-                        .suiteName(resolveSuiteName(run.getSuiteId()))
-                        .runId(run.getId())
-                        .status(run.getStatus().name())
-                        .build())
-                .toList();
+        List<TestRunResponse> runs = runService.findListByBatchId(id);
         return BatchRunDetailResponse.builder()
                 .batch(toResponse(batch))
                 .runs(runs)
@@ -159,11 +145,5 @@ public class BatchRunService {
                 .completedAt(batch.getCompletedAt())
                 .createdAt(batch.getCreatedAt())
                 .build();
-    }
-
-    private String resolveSuiteName(UUID suiteId) {
-        return suiteRepository.findById(suiteId)
-                .map(TestSuite::getName)
-                .orElse("(deleted)");
     }
 }

@@ -8,7 +8,7 @@ export interface TestRunResponse {
   environmentName: string
   triggerType: 'MANUAL' | 'SCHEDULED'
   scheduleId: string | null
-  status: 'RUNNING' | 'SUCCESS' | 'PARTIAL_FAILURE' | 'FAILURE' | 'CANCELLED'
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'PARTIAL_FAILURE' | 'FAILURE' | 'CANCELLED'
   startedAt: string
   completedAt: string | null
   totalDurationMs: number

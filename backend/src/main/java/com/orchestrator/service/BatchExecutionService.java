@@ -21,6 +21,7 @@ public class BatchExecutionService {
     private final ScheduleService scheduleService;
     private final BatchRunService batchRunService;
     private final BatchExecutionRegistry registry;
+    private final RunService runService;
 
     @Async
     public void executeBatchAsync(UUID batchId,
@@ -60,6 +61,8 @@ public class BatchExecutionService {
                     listener,
                     registry);
 
+            runService.cancelPendingRunsForBatch(batchId);
+
             BatchStatus status = resolveBatchStatus(results, registry.isCancelRequested(batchId));
             int succeeded = countByStatus(results, "SUCCESS");
             int failed = countFailures(results);
@@ -69,6 +72,7 @@ public class BatchExecutionService {
             return results;
         } catch (Exception e) {
             log.error("Batch {} execution failed unexpectedly: {}", batchId, e.getMessage(), e);
+            runService.cancelPendingRunsForBatch(batchId);
             batchRunService.finalizeBatch(batchId, BatchStatus.FAILURE, 0, suites.size());
             listener.onBatchError(batchId, e.getMessage());
             return List.of();
@@ -102,6 +106,7 @@ public class BatchExecutionService {
                 null,
                 suites.size());
         UUID batchId = batch.getId();
+        runService.createPendingBatchRuns(batchId, suites, environmentId, TriggerType.MANUAL, null);
         executeBatchAsync(batchId, suites, environmentId, TriggerType.MANUAL, null);
         return batchId;
     }
@@ -120,7 +125,9 @@ public class BatchExecutionService {
                 TriggerType.SCHEDULED,
                 scheduleId,
                 suites.size());
-        return batch.getId();
+        UUID batchId = batch.getId();
+        runService.createPendingBatchRuns(batchId, suites, environmentId, TriggerType.SCHEDULED, scheduleId);
+        return batchId;
     }
 
     static BatchStatus resolveBatchStatus(List<SuiteBatchRunResult> results, boolean cancelled) {
