@@ -103,6 +103,7 @@
       "failedLoadEnvironments": "Failed to load environments",
       "batchRunFailed": "Batch run failed",
       "failedRunCollection": "Failed to run collection",
+      "runStarted": "Collection run started",
       "cancellationRequested": "Batch cancellation requested",
       "failedCancelBatch": "Failed to cancel batch",
       "completedSuccess_one": "Collection run completed: {{count}} suite succeeded",

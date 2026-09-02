@@ -103,6 +103,7 @@
       "failedLoadEnvironments": "加载环境失败",
       "batchRunFailed": "批次运行失败",
       "failedRunCollection": "运行集合失败",
+      "runStarted": "集合运行已开始",
       "cancellationRequested": "已请求取消批次",
       "failedCancelBatch": "取消批次失败",
       "completedSuccess_one": "集合运行完成：{{count}} 个套件成功",
