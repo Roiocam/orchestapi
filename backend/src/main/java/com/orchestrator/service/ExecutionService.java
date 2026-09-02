@@ -274,6 +274,7 @@ public class ExecutionService {
                         .durationMs(0)
                         .errorMessage("Manual input required but no default provided (scheduled run)")
                         .extractedVariables(Collections.emptyMap())
+                        .requestMethod(requestMethodOf(step))
                         .build();
                 resultCache.put(stepId, skipResult);
                 if (onStepComplete != null) onStepComplete.accept(skipResult);
@@ -412,7 +413,9 @@ public class ExecutionService {
                 StepExecutionResult skipResult = StepExecutionResult.builder()
                         .stepId(depStep.getId()).stepName(depStep.getName()).status("SKIPPED")
                         .durationMs(0).errorMessage("Manual input required but no default provided (scheduled run)")
-                        .extractedVariables(Collections.emptyMap()).build();
+                        .extractedVariables(Collections.emptyMap())
+                        .requestMethod(requestMethodOf(depStep))
+                        .build();
                 resultCache.put(depId, skipResult);
                 continue;
             }
@@ -555,6 +558,7 @@ public class ExecutionService {
 
         // Build and resolve headers
         HttpHeaders httpHeaders = buildHeaders(step, env, emptyVars, emptyInputs, true);
+        Collection<String> secretValues = secretValuesOf(env);
 
         // Build cURL
         StringBuilder curl = new StringBuilder("curl -X ").append(step.getMethod().name());
@@ -562,7 +566,7 @@ public class ExecutionService {
         httpHeaders.forEach((key, values) -> {
             if (values != null) {
                 for (String value : values) {
-                    value = requestHeaderRedactor.redact(key, value);
+                    value = requestHeaderRedactor.redactSecrets(value, secretValues);
                     curl.append(" \\\n  -H '").append(key).append(": ")
                             .append(value.replace("'", "'\\''")).append("'");
                 }
@@ -579,6 +583,7 @@ public class ExecutionService {
                     for (FormDataFieldDto field : fields) {
                         String val = resolvePlaceholders(field.getValue(), env, emptyVars);
                         val = resolveManualInputs(val, emptyInputs);
+                        val = requestHeaderRedactor.redactSecrets(val, secretValues);
                         if ("file".equals(field.getType())) {
                             curl.append(" \\\n  -F '").append(field.getKey())
                                     .append("=@").append(val.replace("'", "'\\''")).append("'");
@@ -592,11 +597,13 @@ public class ExecutionService {
         } else if (step.getBodyType() != BodyType.NONE) {
             String body = resolvePlaceholders(step.getBody(), env, emptyVars);
             body = resolveManualInputs(body, emptyInputs);
+            body = requestHeaderRedactor.redactSecrets(body, secretValues);
             if (body != null && !body.isEmpty()) {
                 curl.append(" \\\n  -d '").append(body.replace("'", "'\\''")).append("'");
             }
         }
 
+        url = requestHeaderRedactor.redactSecrets(url, secretValues);
         curl.append(" \\\n  '").append(url).append("'");
         return curl.toString();
     }
@@ -883,6 +890,7 @@ public class ExecutionService {
                                 .durationMs(System.currentTimeMillis() - suiteStart)
                                 .errorMessage("Run cancelled: " + e.getMessage())
                                 .extractedVariables(Collections.emptyMap())
+                                .requestMethod(requestMethodOf(step))
                                 .build();
                         resultCache.put(stepId, cancelResult);
                         if (onStepComplete != null) onStepComplete.accept(cancelResult);
@@ -1213,6 +1221,7 @@ public class ExecutionService {
                                     + (depResult != null ? depResult.getStepName() : dep.getDependsOnStepId())
                                     + "' did not succeed")
                             .extractedVariables(Collections.emptyMap())
+                            .requestMethod(requestMethodOf(step))
                             .build();
                 }
 
@@ -1258,6 +1267,7 @@ public class ExecutionService {
 
         // 5. Build headers. Token acquisition failures are represented as a
         // structured step error and must not reach the target service.
+        Collection<String> secretValues = secretValuesOf(env);
         HttpHeaders httpHeaders = new HttpHeaders();
         try {
             httpHeaders = buildHeaders(step, env, allExtractedVars, manualInputValues, false);
@@ -1273,10 +1283,11 @@ public class ExecutionService {
                     .errorMessage(exception.getMessage())
                     .fromCache(false)
                     .extractedVariables(Collections.emptyMap())
-                    .requestUrl(url)
+                    .requestMethod(requestMethodOf(step))
+                    .requestUrl(requestHeaderRedactor.redactSecrets(url, secretValues))
                     .requestBody("")
-                    .requestHeaders(requestHeaderRedactor.toDisplayMap(httpHeaders))
-                    .requestQueryParams(resolvedQueryParams)
+                    .requestHeaders(requestHeaderRedactor.toDisplayMap(httpHeaders, secretValues))
+                    .requestQueryParams(requestHeaderRedactor.redactMap(resolvedQueryParams, secretValues))
                     .warnings(stepWarnings)
                     .build();
         }
@@ -1284,13 +1295,19 @@ public class ExecutionService {
         // 6. Build body based on body type
         Object body;
         String requestBodyDisplay;
+        List<FormDataFieldDto> requestFormData = List.of();
         if (step.getBodyType() == BodyType.FORM_DATA) {
             // Build multipart form-data — do NOT set Content-Type manually;
             // Spring's FormHttpMessageConverter will set it with the boundary parameter
             httpHeaders.remove(HttpHeaders.CONTENT_TYPE);
-            MultiValueMap<String, Object> formData = buildFormData(step, env, allExtractedVars, manualInputValues);
-            body = formData;
-            requestBodyDisplay = "[multipart/form-data: " + formData.size() + " fields]";
+            ResolvedFormData resolvedForm = buildFormData(step, env, allExtractedVars, manualInputValues);
+            body = resolvedForm.formData();
+            requestFormData = resolvedForm.displayFields();
+            try {
+                requestBodyDisplay = objectMapper.writeValueAsString(requestFormData);
+            } catch (JsonProcessingException e) {
+                requestBodyDisplay = "[multipart/form-data: " + resolvedForm.formData().size() + " fields]";
+            }
         } else {
             String textBody = resolvePlaceholders(step.getBody(), env, allExtractedVars, stepWarnings);
             textBody = resolveManualInputs(textBody, manualInputValues);
@@ -1301,29 +1318,40 @@ public class ExecutionService {
         // 7. Convert our HttpMethod enum to Spring's HttpMethod
         org.springframework.http.HttpMethod springMethod = toSpringMethod(step.getMethod());
 
-        // 8. Capture resolved request headers as flat map
-        Map<String, String> requestHeadersMap = requestHeaderRedactor.toDisplayMap(httpHeaders);
+        // 8. Capture resolved request headers (raw — redact only for persisted result)
+        Map<String, String> rawRequestHeaders = new LinkedHashMap<>();
+        httpHeaders.forEach((name, values) -> {
+            if (values != null && !values.isEmpty()) {
+                rawRequestHeaders.put(name, String.join(", ", values));
+            }
+        });
 
         // 9. Execute with retry logic
         StepExecutionResult result = executeWithRetry(step, env, url, httpHeaders, body, springMethod,
                 resultCache, allExtractedVars, stepMap, stepStart);
 
-        // 10. Set request details on the result
-        result.setRequestUrl(url);
-        result.setRequestBody(requestBodyDisplay);
-        result.setRequestHeaders(requestHeadersMap);
-        result.setRequestQueryParams(resolvedQueryParams);
+        // 10. Extract variables from both response AND request context (all resolved values)
+        Map<String, String> extracted = extractVariables(step,
+                result.getResponseBody(), result.getResponseHeaders() != null ? result.getResponseHeaders() : Collections.emptyMap(), result.getResponseCode(),
+                requestBodyDisplay, rawRequestHeaders, resolvedQueryParams, url);
+        result.setExtractedVariables(extracted);
 
-        // 11. Set warnings about unresolved variables
+        // 11. Persist request details with secret values redacted
+        List<FormDataFieldDto> redactedFormData = redactFormData(requestFormData, secretValues);
+        String redactedBody = requestHeaderRedactor.redactSecrets(
+                step.getBodyType() == BodyType.FORM_DATA ? writeFormDataJson(redactedFormData) : requestBodyDisplay,
+                secretValues);
+        result.setRequestMethod(requestMethodOf(step));
+        result.setRequestUrl(requestHeaderRedactor.redactSecrets(url, secretValues));
+        result.setRequestBody(redactedBody);
+        result.setRequestHeaders(requestHeaderRedactor.redactMap(rawRequestHeaders, secretValues));
+        result.setRequestQueryParams(requestHeaderRedactor.redactMap(resolvedQueryParams, secretValues));
+        result.setRequestFormData(redactedFormData);
+
+        // 12. Set warnings about unresolved variables
         if (!stepWarnings.isEmpty()) {
             result.setWarnings(stepWarnings);
         }
-
-        // 12. Extract variables from both response AND request context (all resolved values)
-        Map<String, String> extracted = extractVariables(step,
-                result.getResponseBody(), result.getResponseHeaders() != null ? result.getResponseHeaders() : Collections.emptyMap(), result.getResponseCode(),
-                requestBodyDisplay, requestHeadersMap, resolvedQueryParams, url);
-        result.setExtractedVariables(extracted);
 
         return result;
     }
@@ -1468,7 +1496,12 @@ public class ExecutionService {
             }
         } catch (RestClientException e) {
             log.error("HTTP call failed for step '{}': {}", step.getName(), e.getMessage());
-            Map<String, String> reqHeaders = requestHeaderRedactor.toDisplayMap(httpHeaders);
+            Map<String, String> reqHeaders = new LinkedHashMap<>();
+            httpHeaders.forEach((name, values) -> {
+                if (values != null && !values.isEmpty()) {
+                    reqHeaders.put(name, String.join(", ", values));
+                }
+            });
             return StepExecutionResult.builder()
                     .stepId(step.getId())
                     .stepName(step.getName())
@@ -1480,8 +1513,9 @@ public class ExecutionService {
                     .errorMessage("HTTP call failed: " + e.getMessage())
                     .fromCache(false)
                     .extractedVariables(Collections.emptyMap())
+                    .requestMethod(requestMethodOf(step))
                     .requestUrl(url)
-                    .requestBody(body instanceof String ? (String) body : "[multipart/form-data]")
+                    .requestBody(body instanceof String ? (String) body : null)
                     .requestHeaders(reqHeaders)
                     .build();
         }
@@ -2001,6 +2035,54 @@ public class ExecutionService {
 
     // ── Utility methods ─────────────────────────────────────────────────
 
+    private static String requestMethodOf(TestStep step) {
+        return step.getMethod() != null ? step.getMethod().name() : null;
+    }
+
+    private Collection<String> secretValuesOf(Environment env) {
+        LinkedHashSet<String> secrets = new LinkedHashSet<>();
+        if (env == null) {
+            return secrets;
+        }
+        if (env.getVariables() != null) {
+            for (EnvironmentVariable variable : env.getVariables()) {
+                if (variable != null && variable.isSecret()
+                        && variable.getValue() != null && !variable.getValue().isBlank()) {
+                    secrets.add(variable.getValue());
+                }
+            }
+        }
+        if (env.getOauthConfig() != null
+                && env.getOauthConfig().getClientSecret() != null
+                && !env.getOauthConfig().getClientSecret().isBlank()) {
+            secrets.add(env.getOauthConfig().getClientSecret());
+        }
+        return secrets;
+    }
+
+    private List<FormDataFieldDto> redactFormData(List<FormDataFieldDto> fields, Collection<String> secretValues) {
+        if (fields == null || fields.isEmpty()) {
+            return List.of();
+        }
+        List<FormDataFieldDto> redacted = new ArrayList<>(fields.size());
+        for (FormDataFieldDto field : fields) {
+            redacted.add(FormDataFieldDto.builder()
+                    .key(field.getKey())
+                    .type(field.getType())
+                    .value(requestHeaderRedactor.redactSecrets(field.getValue(), secretValues))
+                    .build());
+        }
+        return redacted;
+    }
+
+    private String writeFormDataJson(List<FormDataFieldDto> fields) {
+        try {
+            return objectMapper.writeValueAsString(fields != null ? fields : List.of());
+        } catch (JsonProcessingException e) {
+            return "[]";
+        }
+    }
+
     private org.springframework.http.HttpMethod toSpringMethod(HttpMethod method) {
         return switch (method) {
             case GET -> org.springframework.http.HttpMethod.GET;
@@ -2025,14 +2107,20 @@ public class ExecutionService {
 
     private static final Pattern FILE_REF_PATTERN = Pattern.compile("^\\$\\{FILE:(.+)}$");
 
-    private MultiValueMap<String, Object> buildFormData(TestStep step,
+    private record ResolvedFormData(
+            MultiValueMap<String, Object> formData,
+            List<FormDataFieldDto> displayFields
+    ) {}
+
+    private ResolvedFormData buildFormData(TestStep step,
                                                          Environment env,
                                                          Map<String, String> allExtractedVars,
                                                          Map<String, String> manualInputValues) {
         MultiValueMap<String, Object> formData = new LinkedMultiValueMap<>();
+        List<FormDataFieldDto> displayFields = new ArrayList<>();
         String fieldsJson = step.getFormDataFields();
         if (fieldsJson == null || fieldsJson.isBlank() || "[]".equals(fieldsJson)) {
-            return formData;
+            return new ResolvedFormData(formData, displayFields);
         }
 
         List<FormDataFieldDto> fields;
@@ -2040,7 +2128,7 @@ public class ExecutionService {
             fields = objectMapper.readValue(fieldsJson, new TypeReference<List<FormDataFieldDto>>() {});
         } catch (JsonProcessingException e) {
             log.warn("Failed to parse form data fields: {}", e.getMessage());
-            return formData;
+            return new ResolvedFormData(formData, displayFields);
         }
 
         UUID envId = env != null ? env.getId() : null;
@@ -2074,17 +2162,32 @@ public class ExecutionService {
                     HttpHeaders partHeaders = new HttpHeaders();
                     partHeaders.setContentType(MediaType.parseMediaType(contentType));
                     formData.add(key, new HttpEntity<>(resource, partHeaders));
+                    displayFields.add(FormDataFieldDto.builder()
+                            .key(key)
+                            .type("file")
+                            .value(envFile.getFileName())
+                            .build());
                 } else {
                     log.warn("File reference ${{FILE:{}}} not found in environment {}", fileKey, envId);
+                    displayFields.add(FormDataFieldDto.builder()
+                            .key(key)
+                            .type("file")
+                            .value("${FILE:" + fileKey + "}")
+                            .build());
                 }
             } else {
                 // Text field — resolve placeholders
                 value = resolvePlaceholders(value, env, allExtractedVars);
                 value = resolveManualInputs(value, manualInputValues);
                 formData.add(key, value);
+                displayFields.add(FormDataFieldDto.builder()
+                        .key(key)
+                        .type(field.getType() != null ? field.getType() : "text")
+                        .value(value)
+                        .build());
             }
         }
 
-        return formData;
+        return new ResolvedFormData(formData, displayFields);
     }
 }

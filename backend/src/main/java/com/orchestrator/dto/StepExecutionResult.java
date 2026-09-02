@@ -29,10 +29,14 @@ public class StepExecutionResult {
     private List<ResponseValidationResultDto> responseValidationResults = new ArrayList<>();
 
     // Request details (resolved placeholders)
+    private String requestMethod;
     private String requestUrl;
     private String requestBody;
     private Map<String, String> requestHeaders;
     private Map<String, String> requestQueryParams;
+    /** Resolved multipart fields (text values / file names). Empty when not form-data. */
+    @Builder.Default
+    private List<FormDataFieldDto> requestFormData = new ArrayList<>();
 
     // Warnings (e.g. unresolved variable placeholders)
     @Builder.Default

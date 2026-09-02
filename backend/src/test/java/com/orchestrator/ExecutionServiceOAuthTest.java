@@ -126,7 +126,7 @@ class ExecutionServiceOAuthTest {
     }
 
     @Test
-    void sendsAutomaticBearerTokenToTargetAndRedactsResultHeaders() {
+    void sendsAutomaticBearerTokenToTargetAndPreservesResultHeaders() {
         when(provider.getToken(any(EnvironmentOAuthSnapshot.class))).thenReturn(
                 new com.orchestrator.oauth.OAuthAccessToken(
                         "token-1", "Bearer", java.time.Instant.parse("2030-01-01T00:05:00Z")));
@@ -143,7 +143,7 @@ class ExecutionServiceOAuthTest {
         assertThat(entity.getValue().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
                 .isEqualTo("Bearer token-1");
         StepExecutionResult stepResult = result.getSteps().get(0);
-        assertThat(stepResult.getRequestHeaders().get("Authorization")).isEqualTo("<redacted>");
+        assertThat(stepResult.getRequestHeaders().get("Authorization")).isEqualTo("Bearer token-1");
         assertThat(stepResult.getStatus()).isEqualTo("SUCCESS");
         order.verify(provider).getToken(any(EnvironmentOAuthSnapshot.class));
         order.verify(restTemplate).exchange(any(URI.class), any(), any(HttpEntity.class), eq(String.class));

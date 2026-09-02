@@ -105,13 +105,23 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
 }
 
 function buildCurlFromResult(step: StepExecutionResult, method?: string): string {
-  const parts: string[] = [`curl -X ${method || 'GET'}`]
+  const parts: string[] = [`curl -X ${method || step.requestMethod || 'GET'}`]
   if (step.requestHeaders) {
     Object.entries(step.requestHeaders).forEach(([key, value]) => {
       parts.push(`  -H '${key}: ${value.replace(/'/g, "'\\''")}'`)
     })
   }
-  if (step.requestBody && step.requestBody.trim() && !step.requestBody.startsWith('[multipart/form-data')) {
+  const formData = step.requestFormData?.filter((f) => f.key)
+  if (formData && formData.length > 0) {
+    formData.forEach((field) => {
+      const value = (field.value ?? '').replace(/'/g, "'\\''")
+      if (field.type === 'file') {
+        parts.push(`  -F '${field.key}=@${value}'`)
+      } else {
+        parts.push(`  -F '${field.key}=${value}'`)
+      }
+    })
+  } else if (step.requestBody && step.requestBody.trim() && !step.requestBody.startsWith('[multipart/form-data')) {
     parts.push(`  -d '${step.requestBody.replace(/'/g, "'\\''")}'`)
   }
   parts.push(`  '${step.requestUrl || ''}'`)
@@ -603,7 +613,7 @@ function StepResultTabs({ step, method, depResults, allSteps }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {depResults.map((dep) => {
             const depDef = allSteps.find((s) => s.id === dep.stepId)
-            const depMethod = depDef?.method
+            const depMethod = dep.requestMethod || depDef?.method
             return (
               <Collapse
                 key={dep.stepId}
@@ -669,7 +679,7 @@ function StepResultCard({
 }) {
   const { t } = useTranslation()
   const stepDef = allSteps.find((s) => s.id === step.stepId)
-  const method = stepDef?.method
+  const method = step.requestMethod || stepDef?.method
 
   return (
     <Collapse

@@ -54,10 +54,12 @@ export interface StepExecutionResult {
   extractedVariables: Record<string, string>
   verificationResults: VerificationResultDto[]
   responseValidationResults: ResponseValidationResultDto[]
+  requestMethod?: string
   requestUrl: string
   requestBody: string
   requestHeaders: Record<string, string>
   requestQueryParams: Record<string, string>
+  requestFormData?: { key: string; type: string; value: string }[]
   warnings: string[]
 }
 
