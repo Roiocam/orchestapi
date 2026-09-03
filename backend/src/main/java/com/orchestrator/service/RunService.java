@@ -126,6 +126,21 @@ public class RunService {
         }
     }
 
+    /**
+     * Persist in-progress step results while the run is still RUNNING.
+     * SSE disconnects must not prevent later history views from seeing completed steps.
+     */
+    @Transactional
+    public void saveProgress(UUID runId, SuiteExecutionResult partial) {
+        TestRun run = repository.findById(runId).orElse(null);
+        if (run == null || run.getStatus() != RunStatus.RUNNING) {
+            return;
+        }
+        run.setTotalDurationMs(partial.getTotalDurationMs());
+        writeResultData(run, partial);
+        repository.save(run);
+    }
+
     @Transactional
     public void completeRun(UUID runId, SuiteExecutionResult result) {
         TestRun run = repository.findById(runId)
@@ -140,12 +155,7 @@ public class RunService {
             run.setStatus(RunStatus.FAILURE);
         }
 
-        try {
-            run.setResultData(objectMapper.writeValueAsString(result));
-        } catch (JsonProcessingException e) {
-            log.error("Failed to serialize run result: {}", e.getMessage());
-            run.setResultData(null);
-        }
+        writeResultData(run, result);
         repository.save(run);
     }
 
@@ -153,9 +163,33 @@ public class RunService {
     public void failRun(UUID runId, String errorMessage) {
         TestRun run = repository.findById(runId).orElse(null);
         if (run == null) return;
+        // SSE send failures after persist must not rewrite a finished run to FAILURE
+        // or wipe step results already stored by saveProgress/completeRun.
+        if (run.getStatus() != RunStatus.RUNNING && run.getStatus() != RunStatus.PENDING) {
+            log.warn("Ignoring failRun for {} (already {}); error was: {}",
+                    runId, run.getStatus(), errorMessage);
+            return;
+        }
         run.setStatus(RunStatus.FAILURE);
         run.setCompletedAt(LocalDateTime.now());
+        if (run.getResultData() != null) {
+            try {
+                SuiteExecutionResult existing = objectMapper.readValue(run.getResultData(), SuiteExecutionResult.class);
+                existing.setStatus("FAILURE");
+                writeResultData(run, existing);
+            } catch (JsonProcessingException e) {
+                log.warn("Could not stamp FAILURE onto result data for {}: {}", runId, e.getMessage());
+            }
+        }
         repository.save(run);
+    }
+
+    private void writeResultData(TestRun run, SuiteExecutionResult result) {
+        try {
+            run.setResultData(objectMapper.writeValueAsString(result));
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize run result: {}", e.getMessage());
+        }
     }
 
     @Transactional

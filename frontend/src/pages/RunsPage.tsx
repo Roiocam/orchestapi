@@ -510,7 +510,13 @@ export default function RunsPage() {
     try {
       const detail = await runApi.get(id)
       if (detail.status === 'RUNNING') {
-        setLiveResult({ status: 'RUNNING', steps: [], totalDurationMs: 0 })
+        setLiveResult(
+          (detail.resultData as SuiteExecutionResult | null) ?? {
+            status: 'RUNNING',
+            steps: [],
+            totalDurationMs: 0,
+          },
+        )
         let receivedStep = false
         runStreamRef.current = runApi.stream(id, {
           onStep: (step) => {

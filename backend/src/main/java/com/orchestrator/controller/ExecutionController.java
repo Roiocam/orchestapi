@@ -2,6 +2,7 @@ package com.orchestrator.controller;
 
 import com.orchestrator.dto.ManualInputRequest;
 import com.orchestrator.dto.RunRequest;
+import com.orchestrator.dto.StepExecutionResult;
 import com.orchestrator.dto.SuiteExecutionResult;
 import com.orchestrator.model.TestRun;
 import com.orchestrator.model.enums.TriggerType;
@@ -15,7 +16,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -114,43 +116,7 @@ public class ExecutionController {
         emitter.onCompletion(() -> runRegistry.unregisterRun(runId));
 
         Thread.ofVirtual().name("sse-suite-" + suiteId).start(() -> {
-            try {
-                // Send run-started event with the runId
-                emitter.send(SseEmitter.event()
-                        .name("run-started")
-                        .data(Map.of("runId", runId.toString()), MediaType.APPLICATION_JSON));
-
-                SuiteExecutionResult finalResult = executionService.executePrepared(prepared, stepResult -> {
-                    try {
-                        emitter.send(SseEmitter.event()
-                                .name("step")
-                                .data(stepResult, MediaType.APPLICATION_JSON));
-                    } catch (IOException e) {
-                        log.error("Failed to send SSE step event: {}", e.getMessage());
-                    }
-                }, runId, runRegistry, emitter);
-
-                // Persist completed run
-                runService.completeRun(runId, finalResult);
-
-                emitter.send(SseEmitter.event()
-                        .name("complete")
-                        .data(finalResult, MediaType.APPLICATION_JSON));
-                emitter.complete();
-            } catch (Exception e) {
-                // Persist failed run
-                runService.failRun(runId, e.getMessage());
-
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("run-error")
-                            .data(Map.of("message", e.getMessage() != null ? e.getMessage() : "Unknown error"),
-                                    MediaType.APPLICATION_JSON));
-                } catch (IOException ignored) {}
-                emitter.completeWithError(e);
-            } finally {
-                runRegistry.unregisterRun(runId);
-            }
+            runStreamingExecution(emitter, prepared, runId);
         });
 
         return emitter;
@@ -178,44 +144,64 @@ public class ExecutionController {
         emitter.onCompletion(() -> runRegistry.unregisterRun(runId));
 
         Thread.ofVirtual().name("sse-step-" + stepId).start(() -> {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("run-started")
-                        .data(Map.of("runId", runId.toString()), MediaType.APPLICATION_JSON));
-
-                SuiteExecutionResult finalResult = executionService.executePrepared(prepared, stepResult -> {
-                    try {
-                        emitter.send(SseEmitter.event()
-                                .name("step")
-                                .data(stepResult, MediaType.APPLICATION_JSON));
-                    } catch (IOException e) {
-                        log.error("Failed to send SSE step event: {}", e.getMessage());
-                    }
-                }, runId, runRegistry, emitter);
-
-                // Persist completed run
-                runService.completeRun(runId, finalResult);
-
-                emitter.send(SseEmitter.event()
-                        .name("complete")
-                        .data(finalResult, MediaType.APPLICATION_JSON));
-                emitter.complete();
-            } catch (Exception e) {
-                // Persist failed run
-                runService.failRun(runId, e.getMessage());
-
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("run-error")
-                            .data(Map.of("message", e.getMessage() != null ? e.getMessage() : "Unknown error"),
-                                    MediaType.APPLICATION_JSON));
-                } catch (IOException ignored) {}
-                emitter.completeWithError(e);
-            } finally {
-                runRegistry.unregisterRun(runId);
-            }
+            runStreamingExecution(emitter, prepared, runId);
         });
 
         return emitter;
+    }
+
+    /**
+     * Execution results are persisted independently of the SSE socket.
+     * A client disconnect (Broken pipe / already-completed emitter) must not
+     * fail the run or wipe step results from history.
+     */
+    private void runStreamingExecution(SseEmitter emitter,
+                                       ExecutionService.PreparedExecution prepared,
+                                       UUID runId) {
+        List<StepExecutionResult> persistedSteps = new ArrayList<>();
+        try {
+            sendSse(emitter, "run-started", Map.of("runId", runId.toString()));
+
+            SuiteExecutionResult finalResult = executionService.executePrepared(prepared, stepResult -> {
+                persistedSteps.add(stepResult);
+                runService.saveProgress(runId, SuiteExecutionResult.builder()
+                        .status("RUNNING")
+                        .steps(List.copyOf(persistedSteps))
+                        .totalDurationMs(persistedSteps.stream()
+                                .mapToLong(StepExecutionResult::getDurationMs)
+                                .sum())
+                        .build());
+                sendSse(emitter, "step", stepResult);
+            }, runId, runRegistry, emitter);
+
+            runService.completeRun(runId, finalResult);
+            sendSse(emitter, "complete", finalResult);
+            completeQuietly(emitter);
+        } catch (Exception e) {
+            runService.failRun(runId, e.getMessage());
+            sendSse(emitter, "run-error",
+                    Map.of("message", e.getMessage() != null ? e.getMessage() : "Unknown error"));
+            completeQuietly(emitter);
+        } finally {
+            runRegistry.unregisterRun(runId);
+        }
+    }
+
+    private void sendSse(SseEmitter emitter, String eventName, Object data) {
+        try {
+            emitter.send(SseEmitter.event()
+                    .name(eventName)
+                    .data(data, MediaType.APPLICATION_JSON));
+        } catch (Exception e) {
+            log.warn("SSE {} event not delivered (client likely disconnected): {}", eventName, e.getMessage());
+        }
+    }
+
+    private void completeQuietly(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Exception e) {
+            log.debug("SSE emitter already completed: {}", e.getMessage());
+        }
     }
 }
