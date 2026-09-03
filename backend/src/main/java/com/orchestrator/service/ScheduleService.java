@@ -28,7 +28,9 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.scheduling.support.CronTrigger;
@@ -137,8 +139,53 @@ public class ScheduleService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<RunScheduleResponse> findAll(UUID environmentId,
+                                                     String scopeTypeRaw,
+                                                     UUID scopeId,
+                                                     UUID suiteId,
+                                                     UUID collectionId,
+                                                     UUID projectId,
+                                                     Pageable pageable) {
+        Specification<RunSchedule> spec = Specification.where(null);
+        if (environmentId != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("environmentId"), environmentId));
+        }
+        if (scopeTypeRaw != null && !scopeTypeRaw.isBlank()) {
+            ScheduleScopeType parsed;
+            try {
+                parsed = ScheduleScopeType.valueOf(scopeTypeRaw.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid scopeType: " + scopeTypeRaw + " (expected SUITE, COLLECTION, or PROJECT)");
+            }
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("scopeType"), parsed));
+        }
+        if (scopeId != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("scopeId"), scopeId));
+        }
+
+        boolean hasApplicabilityFilter = suiteId != null || collectionId != null || projectId != null;
+        if (!hasApplicabilityFilter) {
+            Page<RunSchedule> page = repository.findAll(spec, pageable);
+            return PageResponse.from(page, this::toResponse);
+        }
+
+        List<RunSchedule> filtered = repository.findAll(spec, pageable.getSort()).stream()
+                .filter(schedule -> suiteId == null || appliesToSuite(schedule, suiteId))
+                .filter(schedule -> collectionId == null || appliesToCollection(schedule, collectionId))
+                .filter(schedule -> projectId == null || appliesToProject(schedule, projectId))
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), filtered.size());
+        List<RunSchedule> pageContent = start >= filtered.size() ? List.of() : filtered.subList(start, end);
+        Page<RunSchedule> page = new PageImpl<>(pageContent, pageable, filtered.size());
+        return PageResponse.from(page, this::toResponse);
+    }
+
+    @Transactional(readOnly = true)
     public List<RunScheduleResponse> findBySuiteId(UUID suiteId) {
-        return repository.findBySuiteId(suiteId).stream()
+        return repository.findAll().stream()
+                .filter(schedule -> appliesToSuite(schedule, suiteId))
                 .map(this::toResponse).toList();
     }
 
@@ -713,6 +760,48 @@ public class ScheduleService {
     }
 
     private record ScopeDisplay(String name, int suiteCount) {}
+
+    private boolean appliesToSuite(RunSchedule schedule, UUID suiteId) {
+        TestSuite suite = suiteRepository.findById(suiteId)
+                .orElseThrow(() -> new NotFoundException("Test suite not found: " + suiteId));
+        UUID collectionId = suite.getCollectionId();
+        UUID projectId = collectionRepository.findById(collectionId)
+                .map(ApiCollection::getProjectId)
+                .orElseThrow(() -> new NotFoundException("Collection not found: " + collectionId));
+        return matchesScope(schedule, ScheduleScopeType.SUITE, suiteId)
+                || matchesScope(schedule, ScheduleScopeType.COLLECTION, collectionId)
+                || matchesScope(schedule, ScheduleScopeType.PROJECT, projectId);
+    }
+
+    private boolean appliesToCollection(RunSchedule schedule, UUID collectionId) {
+        ApiCollection collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new NotFoundException("Collection not found: " + collectionId));
+        List<UUID> suiteIds = suiteRepository.findByCollectionIdOrderByNameAsc(collectionId).stream()
+                .map(TestSuite::getId)
+                .toList();
+        return matchesScope(schedule, ScheduleScopeType.COLLECTION, collectionId)
+                || matchesScope(schedule, ScheduleScopeType.PROJECT, collection.getProjectId())
+                || (schedule.getScopeType() == ScheduleScopeType.SUITE && suiteIds.contains(schedule.getScopeId()));
+    }
+
+    private boolean appliesToProject(RunSchedule schedule, UUID projectId) {
+        projectRepository.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+        List<ApiCollection> collections = collectionRepository.findByProjectIdOrderByNameAsc(projectId);
+        List<UUID> collectionIds = collections.stream().map(ApiCollection::getId).toList();
+        List<UUID> suiteIds = collectionIds.isEmpty()
+                ? List.of()
+                : suiteRepository.findByCollectionIdInOrderByNameAsc(collectionIds).stream()
+                        .map(TestSuite::getId)
+                        .toList();
+        return matchesScope(schedule, ScheduleScopeType.PROJECT, projectId)
+                || (schedule.getScopeType() == ScheduleScopeType.COLLECTION && collectionIds.contains(schedule.getScopeId()))
+                || (schedule.getScopeType() == ScheduleScopeType.SUITE && suiteIds.contains(schedule.getScopeId()));
+    }
+
+    private boolean matchesScope(RunSchedule schedule, ScheduleScopeType type, UUID id) {
+        return schedule.getScopeType() == type && id.equals(schedule.getScopeId());
+    }
 
     private ScopeDisplay resolveScopeDisplay(ScheduleScopeType type, UUID scopeId) {
         if (scopeId == null) {

@@ -42,6 +42,12 @@ public class ScheduleController {
     public PageResponse<RunScheduleResponse> findAll(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) UUID environmentId,
+            @RequestParam(required = false) String scopeType,
+            @RequestParam(required = false) UUID scopeId,
+            @RequestParam(required = false) UUID suiteId,
+            @RequestParam(required = false) UUID collectionId,
+            @RequestParam(required = false) UUID projectId,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
         if (!ALLOWED_SORT_FIELDS.contains(sortBy)) sortBy = "createdAt";
@@ -51,7 +57,14 @@ public class ScheduleController {
         Sort sort = sortDir.equalsIgnoreCase("asc")
                 ? Sort.by(sortBy).ascending()
                 : Sort.by(sortBy).descending();
-        return scheduleService.findAll(PageRequest.of(page, size, sort));
+        return scheduleService.findAll(
+                environmentId,
+                scopeType,
+                scopeId,
+                suiteId,
+                collectionId,
+                projectId,
+                PageRequest.of(page, size, sort));
     }
 
     @GetMapping("/notify-logs")

@@ -247,6 +247,10 @@ export default function RunsPage() {
   const [schedulePage, setSchedulePage] = useState(1)
   const [schedulePageSize, setSchedulePageSize] = useState(10)
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0)
+  const [scheduleEnvironmentFilter, setScheduleEnvironmentFilter] = useState<string | undefined>(undefined)
+  const [scheduleProjectFilter, setScheduleProjectFilter] = useState<string | undefined>(undefined)
+  const [scheduleCollectionFilter, setScheduleCollectionFilter] = useState<string | undefined>(undefined)
+  const [scheduleSuiteFilter, setScheduleSuiteFilter] = useState<string | undefined>(undefined)
   const [runningNowIds, setRunningNowIds] = useState<Set<string>>(new Set())
 
   // Notify logs
@@ -373,6 +377,10 @@ export default function RunsPage() {
         const result = await scheduleApi.list({
           page: activeTab === 'notifications' ? 0 : schedulePage - 1,
           size: activeTab === 'notifications' ? 200 : schedulePageSize,
+          environmentId: scheduleEnvironmentFilter,
+          projectId: scheduleProjectFilter,
+          collectionId: scheduleCollectionFilter,
+          suiteId: scheduleSuiteFilter,
         })
         if (!cancelled) setScheduleData(result)
       } catch {
@@ -383,7 +391,16 @@ export default function RunsPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [schedulePage, schedulePageSize, scheduleRefreshKey, activeTab])
+  }, [
+    schedulePage,
+    schedulePageSize,
+    scheduleRefreshKey,
+    activeTab,
+    scheduleEnvironmentFilter,
+    scheduleProjectFilter,
+    scheduleCollectionFilter,
+    scheduleSuiteFilter,
+  ])
 
   // ──── Notify logs: data fetch ────
   useEffect(() => {
@@ -433,6 +450,11 @@ export default function RunsPage() {
       message.error(t('pages.runs.failedLoadDropdownOptions'))
     }
   }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'schedules' && activeTab !== 'notifications') return
+    loadDropdownOptions()
+  }, [activeTab, loadDropdownOptions])
 
   // ──── Run History: handlers ────
   const handleApplyFilter = (dataIndex: string, value: string) => {
@@ -621,6 +643,14 @@ export default function RunsPage() {
     } catch {
       message.error(t('pages.runs.failedDeleteSchedule'))
     }
+  }
+
+  const handleClearScheduleFilters = () => {
+    setScheduleEnvironmentFilter(undefined)
+    setScheduleProjectFilter(undefined)
+    setScheduleCollectionFilter(undefined)
+    setScheduleSuiteFilter(undefined)
+    setSchedulePage(1)
   }
 
   const openScheduleModal = (schedule?: RunScheduleResponse) => {
@@ -1384,7 +1414,63 @@ export default function RunsPage() {
             label: t('pages.runs.tabSchedules'),
             children: (
               <div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                <div style={{ marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder={t('pages.runs.filterEnvironment')}
+                    style={{ width: 220 }}
+                    value={scheduleEnvironmentFilter}
+                    onChange={(v) => {
+                      setScheduleEnvironmentFilter(v)
+                      setSchedulePage(1)
+                    }}
+                    optionFilterProp="label"
+                    options={envOptions}
+                  />
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder={t('pages.runs.filterProject')}
+                    style={{ width: 220 }}
+                    value={scheduleProjectFilter}
+                    onChange={(v) => {
+                      setScheduleProjectFilter(v)
+                      setSchedulePage(1)
+                    }}
+                    optionFilterProp="label"
+                    options={projectOptions}
+                  />
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder={t('pages.runs.filterCollection')}
+                    style={{ width: 220 }}
+                    value={scheduleCollectionFilter}
+                    onChange={(v) => {
+                      setScheduleCollectionFilter(v)
+                      setSchedulePage(1)
+                    }}
+                    optionFilterProp="label"
+                    options={collectionOptions}
+                  />
+                  <Select
+                    allowClear
+                    showSearch
+                    placeholder={t('pages.runs.filterSuite')}
+                    style={{ width: 220 }}
+                    value={scheduleSuiteFilter}
+                    onChange={(v) => {
+                      setScheduleSuiteFilter(v)
+                      setSchedulePage(1)
+                    }}
+                    optionFilterProp="label"
+                    options={suiteOptions}
+                  />
+                  {(scheduleEnvironmentFilter || scheduleProjectFilter || scheduleCollectionFilter || scheduleSuiteFilter) && (
+                    <Button onClick={handleClearScheduleFilters}>{t('common.clearAll')}</Button>
+                  )}
+                  <div style={{ marginLeft: 'auto' }}>
                   <Button
                     type="primary"
                     icon={<PlusOutlined />}
@@ -1392,6 +1478,7 @@ export default function RunsPage() {
                   >
                     {t('pages.runs.createSchedule')}
                   </Button>
+                  </div>
                 </div>
 
                 <Table

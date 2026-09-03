@@ -84,6 +84,12 @@ export interface RunListParams {
 export interface ScheduleListParams {
   page?: number
   size?: number
+  environmentId?: string
+  scopeType?: 'SUITE' | 'COLLECTION' | 'PROJECT'
+  scopeId?: string
+  suiteId?: string
+  collectionId?: string
+  projectId?: string
   sortBy?: string
   sortDir?: 'asc' | 'desc'
 }
