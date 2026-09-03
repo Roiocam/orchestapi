@@ -27,9 +27,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -562,5 +568,247 @@ public class EnvironmentService {
         EnvironmentFile file = fileRepository.findByIdAndEnvironmentId(fileId, environmentId)
                 .orElseThrow(() -> new NotFoundException("File not found: " + fileId));
         fileRepository.delete(file);
+    }
+
+    // ── Export / Import ─────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public EnvironmentExportResult exportEnvironment(UUID id) {
+        Environment env = repository.findByIdWithDetails(id)
+                .orElseThrow(() -> new NotFoundException("Environment not found: " + id));
+        repository.findByIdWithConnectors(id);
+
+        List<EnvironmentFile> files = fileRepository.findByEnvironmentId(id);
+        EnvironmentManifest manifest = buildManifest(env, files);
+
+        String safeName = env.getName().toLowerCase().replaceAll("\\s+", "-");
+
+        if (files.isEmpty()) {
+            // No files → plain JSON
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                byte[] json = mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest);
+                return EnvironmentExportResult.builder()
+                        .content(json)
+                        .contentType("application/json")
+                        .filename(safeName + "-environment.json")
+                        .build();
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to serialize manifest", e);
+            }
+        }
+
+        // Has files → zip
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectMapper mapper = new ObjectMapper();
+            try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+                // manifest.json
+                zos.putNextEntry(new ZipEntry("manifest.json"));
+                zos.write(mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest));
+                zos.closeEntry();
+
+                // files/
+                for (EnvironmentFile ef : files) {
+                    String entryPath = "files/" + ef.getFileKey() + "/" + ef.getFileName();
+                    zos.putNextEntry(new ZipEntry(entryPath));
+                    zos.write(ef.getFileData());
+                    zos.closeEntry();
+                }
+            }
+            return EnvironmentExportResult.builder()
+                    .content(baos.toByteArray())
+                    .contentType("application/zip")
+                    .filename(safeName + "-environment.zip")
+                    .build();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to create zip export", e);
+        }
+    }
+
+    private EnvironmentManifest buildManifest(Environment env, List<EnvironmentFile> files) {
+        ObjectMapper mapper = new ObjectMapper();
+
+        // Variables: secrets get empty value + secret flag
+        List<VariableDto> vars = env.getVariables().stream().map(v -> VariableDto.builder()
+                .key(v.getKey())
+                .value(v.isSecret() ? "" : v.getValue())
+                .valueType(v.getValueType().name())
+                .secret(v.isSecret())
+                .build()).toList();
+
+        // Headers
+        List<HeaderDto> hdrs = env.getHeaders().stream().map(h -> HeaderDto.builder()
+                .headerKey(h.getHeaderKey())
+                .valueType(h.getValueType())
+                .headerValue(h.getHeaderValue())
+                .build()).toList();
+
+        // Connectors: password fields get empty value
+        List<ConnectorDto> conns = env.getConnectors().stream().map(c -> {
+            Map<String, String> config = new LinkedHashMap<>();
+            try {
+                Map<String, String> raw = mapper.readValue(c.getConfig(),
+                        new TypeReference<Map<String, String>>() {});
+                raw.forEach((k, v) -> config.put(k,
+                        k.toLowerCase().contains("password") ? "" : v));
+            } catch (Exception ignored) {}
+            return ConnectorDto.builder()
+                    .name(c.getName())
+                    .type(c.getType())
+                    .config(config)
+                    .build();
+        }).toList();
+
+        // OAuth: template only, disabled, no client secret
+        EnvironmentOAuthRequest oauth = null;
+        if (env.getOauthConfig() != null) {
+            EnvironmentOAuthConfig oc = env.getOauthConfig();
+            oauth = EnvironmentOAuthRequest.builder()
+                    .enabled(false)
+                    .tokenEndpoint(oc.getTokenEndpoint())
+                    .clientId(oc.getClientId())
+                    .scopes(oc.getScopes())
+                    .audience(oc.getAudience())
+                    .clientAuthMethod(oc.getClientAuthMethod())
+                    .refreshSkewSeconds(oc.getRefreshSkewSeconds())
+                    .requestTimeoutMs(oc.getRequestTimeoutMs())
+                    .build();
+        }
+
+        // File entries
+        List<EnvironmentManifest.FileEntry> fileEntries = files.stream().map(ef ->
+                EnvironmentManifest.FileEntry.builder()
+                        .fileKey(ef.getFileKey())
+                        .fileName(ef.getFileName())
+                        .contentType(ef.getContentType())
+                        .path("files/" + ef.getFileKey() + "/" + ef.getFileName())
+                        .build()).toList();
+
+        return EnvironmentManifest.builder()
+                .formatVersion(EnvironmentManifest.CURRENT_FORMAT_VERSION)
+                .name(env.getName())
+                .baseUrl(env.getBaseUrl())
+                .variables(vars)
+                .headers(hdrs)
+                .connectors(conns)
+                .oauth(oauth)
+                .files(fileEntries)
+                .build();
+    }
+
+    @Transactional
+    public EnvironmentImportResponse importEnvironment(MultipartFile upload) {
+        String originalName = upload.getOriginalFilename();
+        boolean isZip = originalName != null && originalName.toLowerCase().endsWith(".zip");
+
+        ObjectMapper mapper = new ObjectMapper();
+        EnvironmentManifest manifest;
+        Map<String, byte[]> fileContents = new LinkedHashMap<>();
+
+        try {
+            if (isZip) {
+                manifest = parseZipImport(upload.getInputStream(), mapper, fileContents);
+            } else {
+                manifest = mapper.readValue(upload.getInputStream(), EnvironmentManifest.class);
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Failed to read import file: " + e.getMessage());
+        }
+
+        if (manifest.getName() == null || manifest.getName().isBlank()) {
+            throw new IllegalArgumentException("Invalid file: missing name");
+        }
+        if (manifest.getBaseUrl() == null || manifest.getBaseUrl().isBlank()) {
+            throw new IllegalArgumentException("Invalid file: missing baseUrl");
+        }
+
+        // Build EnvironmentRequest from manifest (secrets come in empty — that's intentional)
+        EnvironmentRequest request = EnvironmentRequest.builder()
+                .name(manifest.getName())
+                .baseUrl(manifest.getBaseUrl())
+                .variables(manifest.getVariables() != null ? manifest.getVariables() : List.of())
+                .headers(manifest.getHeaders() != null ? manifest.getHeaders() : List.of())
+                .connectors(manifest.getConnectors() != null ? manifest.getConnectors() : List.of())
+                .oauth(manifest.getOauth())
+                .build();
+
+        EnvironmentResponse created = create(request);
+        List<String> warnings = new ArrayList<>();
+
+        // Count secrets that need manual configuration
+        long secretVarCount = manifest.getVariables().stream().filter(VariableDto::isSecret).count();
+        if (secretVarCount > 0) {
+            warnings.add(secretVarCount + " secret variable(s) imported with empty values — please configure them manually");
+        }
+        long passwordConnCount = manifest.getConnectors().stream()
+                .filter(c -> c.getConfig() != null && c.getConfig().entrySet().stream()
+                        .anyMatch(e -> e.getKey().toLowerCase().contains("password") && (e.getValue() == null || e.getValue().isEmpty())))
+                .count();
+        if (passwordConnCount > 0) {
+            warnings.add(passwordConnCount + " connector(s) imported with empty passwords — please configure them manually");
+        }
+        if (manifest.getOauth() != null && !manifest.getOauth().isEnabled()) {
+            boolean hadOAuthConfig = manifest.getOauth().getTokenEndpoint() != null
+                    && !manifest.getOauth().getTokenEndpoint().isBlank();
+            if (hadOAuthConfig) {
+                warnings.add("OAuth imported as disabled template — enable and set client secret manually");
+            }
+        }
+
+        // Restore files from zip
+        if (!fileContents.isEmpty() && manifest.getFiles() != null) {
+            for (EnvironmentManifest.FileEntry fe : manifest.getFiles()) {
+                byte[] data = fileContents.get(fe.getPath());
+                if (data == null) {
+                    warnings.add("File '" + fe.getFileKey() + "' listed in manifest but not found in zip");
+                    continue;
+                }
+                if (data.length > MAX_FILE_SIZE) {
+                    warnings.add("File '" + fe.getFileKey() + "' exceeds 50MB limit, skipped");
+                    continue;
+                }
+                EnvironmentFile envFile = EnvironmentFile.builder()
+                        .environmentId(created.getId())
+                        .fileKey(fe.getFileKey())
+                        .fileName(fe.getFileName())
+                        .contentType(fe.getContentType())
+                        .fileSize(data.length)
+                        .fileData(data)
+                        .build();
+                fileRepository.save(envFile);
+            }
+        } else if (manifest.getFiles() != null && !manifest.getFiles().isEmpty() && fileContents.isEmpty()) {
+            warnings.add(manifest.getFiles().size() + " file(s) listed in manifest but no file data provided (manifest-only import)");
+        }
+
+        return EnvironmentImportResponse.builder()
+                .environment(created)
+                .warnings(warnings)
+                .build();
+    }
+
+    private EnvironmentManifest parseZipImport(InputStream inputStream, ObjectMapper mapper,
+                                                Map<String, byte[]> fileContents) throws IOException {
+        EnvironmentManifest manifest = null;
+        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) continue;
+                String entryName = entry.getName();
+                byte[] data = zis.readAllBytes();
+
+                if ("manifest.json".equals(entryName)) {
+                    manifest = mapper.readValue(data, EnvironmentManifest.class);
+                } else if (entryName.startsWith("files/")) {
+                    fileContents.put(entryName, data);
+                }
+                zis.closeEntry();
+            }
+        }
+        if (manifest == null) {
+            throw new IllegalArgumentException("Zip file does not contain manifest.json");
+        }
+        return manifest;
     }
 }

@@ -450,9 +450,11 @@
       "title": "Environments",
       "description": "Base URLs, variables, and connectors used when suites run.",
       "newEnvironment": "New Environment",
-      "importFileLabel": "Import environment JSON file",
+      "importFileLabel": "Import environment file (JSON or ZIP)",
       "renameBody": "An environment named {{name}} already exists. Enter a new name to continue.",
-      "renamePlaceholder": "New environment name"
+      "renamePlaceholder": "New environment name",
+      "failedExport": "Failed to export environment",
+      "renameZipHint": "Please rename the environment inside the zip manifest.json and re-import"
     },
     "testSuites": {
       "columnName": "Name",

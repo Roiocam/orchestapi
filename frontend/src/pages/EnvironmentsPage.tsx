@@ -26,8 +26,6 @@ import {
 import type { FilterDropdownProps } from 'antd/es/table/interface'
 import type {
   Environment,
-  EnvironmentOAuthRequest,
-  EnvironmentRequest,
   PageResponse,
 } from '../types/environment'
 import { environmentApi, type EnvironmentListParams } from '../services/environmentApi'
@@ -39,41 +37,7 @@ function columnLabel(dataIndex: string, t: (key: string) => string): string {
   return dataIndex
 }
 
-function exportEnvironment(env: Environment) {
-  // OAuth client secrets are intentionally never exportable. Keep the non-secret
-  // settings as a disabled template so an import cannot accidentally activate it.
-  const oauth: EnvironmentOAuthRequest | undefined = env.oauth
-    ? {
-        enabled: false,
-        tokenEndpoint: env.oauth.tokenEndpoint,
-        clientId: env.oauth.clientId,
-        scopes: env.oauth.scopes,
-        audience: env.oauth.audience,
-        clientAuthMethod: env.oauth.clientAuthMethod,
-        refreshSkewSeconds: env.oauth.refreshSkewSeconds,
-        requestTimeoutMs: env.oauth.requestTimeoutMs,
-      }
-    : undefined
-  const payload: EnvironmentRequest = {
-    name: env.name,
-    baseUrl: env.baseUrl,
-    variables: env.variables.map(({ key, value, secret }) => ({ key, value, secret })),
-    headers: env.headers.map(({ headerKey, valueType, headerValue }) => ({
-      headerKey,
-      valueType,
-      headerValue,
-    })),
-    connectors: [],
-    ...(oauth ? { oauth } : {}),
-  }
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${env.name.toLowerCase().replace(/\s+/g, '-')}-environment.json`
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 100)
-}
+// Removed: old client-side exportEnvironment — now uses backend GET /export
 
 function ColumnSearch({
   dataIndex,
@@ -219,30 +183,39 @@ export default function EnvironmentsPage() {
     setCurrentPage(1)
   }
 
-  // --- Import logic ---
+  // --- Import logic (via backend API) ---
   const [renameModalOpen, setRenameModalOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
-  const [pendingImport, setPendingImport] = useState<EnvironmentRequest | null>(null)
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
+  const [pendingImportName, setPendingImportName] = useState('')
 
-  const doImport = async (importData: EnvironmentRequest) => {
+  const doImportFile = async (file: File, overrideName?: string) => {
     try {
-      await environmentApi.create(importData)
-      message.success(t('pages.environments.imported', { name: importData.name }))
-      setPendingImport(null)
+      const uploadFile = overrideName
+        ? new File([file], overrideName + (file.name.endsWith('.zip') ? '.zip' : '.json'), { type: file.type })
+        : file
+      const result = await environmentApi.importEnvironment(uploadFile)
+      message.success(t('pages.environments.imported', { name: result.environment.name }))
+      if (result.warnings?.length) {
+        result.warnings.forEach((w) => message.warning(w, 5))
+      }
+      setPendingImportFile(null)
+      setPendingImportName('')
       setRefreshKey((k) => k + 1)
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { error?: string } } }
         const errorMsg = axiosErr.response?.data?.error ?? ''
         if (errorMsg.toLowerCase().includes('already exists')) {
-          setPendingImport(importData)
-          setRenameValue(importData.name)
+          setPendingImportFile(file)
+          // Try to extract the name from the error message
+          const nameMatch = errorMsg.match(/name '([^']+)'/)
+          setPendingImportName(nameMatch ? nameMatch[1] : file.name.replace(/\.(json|zip)$/i, ''))
+          setRenameValue(nameMatch ? nameMatch[1] : '')
           setRenameModalOpen(true)
         } else {
           message.error(errorMsg || t('common.importFailed'))
         }
-      } else if (err instanceof SyntaxError) {
-        message.error(t('common.invalidJson'))
       } else {
         message.error(t('common.importFailed'))
       }
@@ -252,58 +225,40 @@ export default function EnvironmentsPage() {
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onerror = () => message.error(t('common.failedReadFile'))
-    reader.onload = async (event) => {
-      try {
-        const parsed = JSON.parse(event.target?.result as string) as EnvironmentRequest
-        if (!parsed.name || !parsed.baseUrl) {
-          message.error(t('pages.environments.invalidFile'))
-          return
-        }
-        await doImport({
-          name: parsed.name,
-          baseUrl: parsed.baseUrl,
-          variables: parsed.variables ?? [],
-          headers: parsed.headers ?? [],
-          connectors: parsed.connectors ?? [],
-          oauth: parsed.oauth
-            ? {
-                enabled: parsed.oauth.enabled ?? false,
-                tokenEndpoint: parsed.oauth.tokenEndpoint ?? '',
-                clientId: parsed.oauth.clientId ?? '',
-                ...(parsed.oauth.clientSecret !== undefined
-                  ? { clientSecret: parsed.oauth.clientSecret }
-                  : {}),
-                scopes: parsed.oauth.scopes ?? '',
-                audience: parsed.oauth.audience ?? '',
-                clientAuthMethod: parsed.oauth.clientAuthMethod === 'client_secret_post'
-                  ? 'client_secret_post'
-                  : 'client_secret_basic',
-                refreshSkewSeconds: parsed.oauth.refreshSkewSeconds ?? 60,
-                requestTimeoutMs: parsed.oauth.requestTimeoutMs ?? 10_000,
-                clearClientSecret: false,
-              }
-            : undefined,
-        })
-      } catch (err) {
-        if (err instanceof SyntaxError) {
-          message.error(t('common.invalidJson'))
-        } else {
-          message.error(t('common.importFailed'))
-        }
-      }
-    }
-    reader.readAsText(file)
+    doImportFile(file)
     e.target.value = ''
   }
 
   const handleRenameImport = async () => {
-    if (!pendingImport || !renameValue.trim()) return
+    if (!pendingImportFile || !renameValue.trim()) return
     const trimmedName = renameValue.trim()
-    // Close modal first — doImport will reopen if the new name also conflicts
     setRenameModalOpen(false)
-    await doImport({ ...pendingImport, name: trimmedName })
+    // For rename: we need to re-read manifest and change name.
+    // Easiest approach: read the file, modify manifest name, re-upload.
+    try {
+      if (pendingImportFile.name.toLowerCase().endsWith('.zip')) {
+        // For zip files, we can't easily modify in-browser. Show a message.
+        message.info(t('pages.environments.renameZipHint'))
+        setPendingImportFile(null)
+        return
+      }
+      const text = await pendingImportFile.text()
+      const parsed = JSON.parse(text)
+      parsed.name = trimmedName
+      const newBlob = new Blob([JSON.stringify(parsed, null, 2)], { type: 'application/json' })
+      const newFile = new File([newBlob], pendingImportFile.name, { type: 'application/json' })
+      await doImportFile(newFile)
+    } catch {
+      message.error(t('common.importFailed'))
+    }
+  }
+
+  const handleExport = async (envId: string) => {
+    try {
+      await environmentApi.exportEnvironment(envId)
+    } catch {
+      message.error(t('pages.environments.failedExport'))
+    }
   }
 
   const columnSearchProps = (dataIndex: string) => ({
@@ -401,7 +356,7 @@ export default function EnvironmentsPage() {
               <Button
                 type="text"
                 icon={<ExportOutlined />}
-                onClick={() => exportEnvironment(record)}
+                onClick={() => handleExport(record.id)}
               />
             </Tooltip>
             <Popconfirm
@@ -445,7 +400,7 @@ export default function EnvironmentsPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".json"
+        accept=".json,.zip"
         style={{ display: 'none' }}
         onChange={handleImport}
         aria-label={t('pages.environments.importFileLabel')}
@@ -462,12 +417,12 @@ export default function EnvironmentsPage() {
         onOk={handleRenameImport}
         onCancel={() => {
           setRenameModalOpen(false)
-          setPendingImport(null)
+          setPendingImportFile(null)
         }}
         okText={t('common.import')}
       >
         <p style={{ marginBottom: 12, color: 'var(--text-body)' }}>
-          {t('pages.environments.renameBody', { name: pendingImport?.name })}
+          {t('pages.environments.renameBody', { name: pendingImportName })}
         </p>
         <Input
           value={renameValue}

@@ -450,9 +450,11 @@
       "title": "环境",
       "description": "套件运行时使用的基础 URL、变量和连接器。",
       "newEnvironment": "新建环境",
-      "importFileLabel": "导入环境 JSON 文件",
+      "importFileLabel": "导入环境文件（JSON 或 ZIP）",
       "renameBody": "名为 {{name}} 的环境已存在。请输入新名称以继续。",
-      "renamePlaceholder": "新环境名称"
+      "renamePlaceholder": "新环境名称",
+      "failedExport": "导出环境失败",
+      "renameZipHint": "请修改 zip 内 manifest.json 中的环境名称后重新导入"
     },
     "testSuites": {
       "columnName": "名称",

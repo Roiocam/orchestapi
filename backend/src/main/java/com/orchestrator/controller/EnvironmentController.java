@@ -72,6 +72,24 @@ public class EnvironmentController {
         return service.testConnection(request);
     }
 
+    // ── Export / Import ──────────────────────────────────────────────────
+
+    @GetMapping("/{id}/export")
+    public ResponseEntity<byte[]> exportEnvironment(@PathVariable UUID id) {
+        EnvironmentExportResult result = service.exportEnvironment(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + result.filename() + "\"")
+                .contentType(MediaType.parseMediaType(result.contentType()))
+                .contentLength(result.content().length)
+                .body(result.content());
+    }
+
+    @PostMapping("/import")
+    public ResponseEntity<EnvironmentImportResponse> importEnvironment(
+            @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.importEnvironment(file));
+    }
+
     // ── File endpoints ──────────────────────────────────────────────────
 
     @PostMapping("/{id}/files")

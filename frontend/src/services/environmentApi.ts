@@ -61,4 +61,34 @@ export const environmentApi = {
 
   deleteFile: (envId: string, fileId: string) =>
     axios.delete(`${BASE}/${envId}/files/${fileId}`),
+
+  // ── Export / Import ───────────────────────────────────────────
+
+  exportEnvironment: (envId: string) =>
+    axios
+      .get<Blob>(`${BASE}/${envId}/export`, { responseType: 'blob' })
+      .then((r) => {
+        const disposition = r.headers['content-disposition'] as string | undefined
+        let filename = 'environment-export'
+        if (disposition) {
+          const match = disposition.match(/filename="?([^"]+)"?/)
+          if (match) filename = match[1]
+        }
+        const url = URL.createObjectURL(r.data)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(url), 100)
+      }),
+
+  importEnvironment: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return axios
+      .post<{ environment: Environment; warnings: string[] }>(`${BASE}/import`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data)
+  },
 }
