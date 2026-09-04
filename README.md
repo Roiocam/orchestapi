@@ -304,8 +304,11 @@ All values are **resolved** — you get the actual runtime value, not the placeh
 | `$.nested.field` | `$.data.user.name` | Nested field |
 | `$.array[0]` | `$.items[0]` | First array element |
 | `$.array[0].field` | `$.items[0].id` | Field in first array element |
+| `$.array[?(@.field=='value')]` | `$.items[?(@.name=='xxx')].id` | First array element matching a filter |
 | `$.length()` | `$.items.length()` | Array or string length |
 | `$.size()` | `$.items.size()` | Same as length() |
+
+Filter expressions follow [Jayway JSONPath](https://github.com/json-path/JsonPath) syntax. When a filter matches multiple elements, the **first** match is used for variable extraction and equality checks.
 
 ### Response Handlers
 

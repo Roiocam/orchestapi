@@ -10,6 +10,7 @@ import com.orchestrator.model.StepResponseValidation;
 import com.orchestrator.model.enums.AssertionOperator;
 import com.orchestrator.model.enums.ExpectedDataType;
 import com.orchestrator.model.enums.ResponseValidationType;
+import com.orchestrator.util.JsonPathNavigator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -169,7 +170,7 @@ public class ResponseValidationService {
 
         try {
             JsonNode rootNode = objectMapper.readTree(responseBody != null ? responseBody : "");
-            JsonNode targetNode = navigateJsonPath(rootNode, jsonPath);
+            JsonNode targetNode = JsonPathNavigator.extractAsNode(objectMapper, rootNode, jsonPath);
 
             String actualType = getNodeType(targetNode);
             boolean passed = matchesType(targetNode, expectedType);
@@ -277,69 +278,6 @@ public class ResponseValidationService {
 
         // Primitives: structure match only cares that both are primitives (key exists)
         return true;
-    }
-
-    /**
-     * Navigate a JsonNode using a simplified JSONPath (same logic as ExecutionService.extractJsonPath).
-     */
-    private JsonNode navigateJsonPath(JsonNode root, String path) {
-        if (path == null || path.isEmpty()) return root;
-        if (!path.startsWith("$")) return root;
-
-        String remaining = path.substring(1); // skip $
-        JsonNode current = root;
-
-        while (!remaining.isEmpty() && current != null) {
-            if (remaining.startsWith(".")) {
-                remaining = remaining.substring(1);
-            }
-
-            // Handle array index: [0]
-            if (remaining.startsWith("[")) {
-                int closeBracket = remaining.indexOf(']');
-                if (closeBracket < 0) break;
-                String indexStr = remaining.substring(1, closeBracket);
-                remaining = remaining.substring(closeBracket + 1);
-                try {
-                    int index = Integer.parseInt(indexStr);
-                    if (current.isArray() && index < current.size()) {
-                        current = current.get(index);
-                    } else {
-                        return null;
-                    }
-                } catch (NumberFormatException e) {
-                    return null;
-                }
-            } else {
-                // Handle field name
-                int nextDot = remaining.indexOf('.');
-                int nextBracket = remaining.indexOf('[');
-                int end = remaining.length();
-                if (nextDot >= 0) end = Math.min(end, nextDot);
-                if (nextBracket >= 0) end = Math.min(end, nextBracket);
-
-                String fieldName = remaining.substring(0, end);
-                remaining = remaining.substring(end);
-
-                if (fieldName.isEmpty()) continue;
-
-                // Handle functions
-                if (fieldName.equals("length()") || fieldName.equals("size()")) {
-                    if (current.isArray()) return objectMapper.valueToTree(current.size());
-                    if (current.isObject()) return objectMapper.valueToTree(current.size());
-                    if (current.isTextual()) return objectMapper.valueToTree(current.asText().length());
-                    return objectMapper.valueToTree(0);
-                }
-
-                if (current.isObject()) {
-                    current = current.get(fieldName);
-                } else {
-                    return null;
-                }
-            }
-        }
-
-        return current;
     }
 
     private String getNodeType(JsonNode node) {

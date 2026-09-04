@@ -16,6 +16,7 @@ import com.orchestrator.repository.EnvironmentFileRepository;
 import com.orchestrator.repository.EnvironmentRepository;
 import com.orchestrator.repository.TestStepRepository;
 import com.orchestrator.repository.TestSuiteRepository;
+import com.orchestrator.util.JsonPathNavigator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
@@ -1918,84 +1919,7 @@ public class ExecutionService {
     // ── JSON path extraction ────────────────────────────────────────────
 
     String extractJsonPath(String responseBody, String jsonPath) {
-        if (responseBody == null || responseBody.isEmpty()) return "";
-        if (jsonPath == null || jsonPath.isEmpty()) return "";
-
-        try {
-            JsonNode root = objectMapper.readTree(responseBody);
-
-            // Parse path: "$.data.accessToken" → ["data", "accessToken"]
-            String path = jsonPath;
-            if (path.startsWith("$.")) {
-                path = path.substring(2);
-            } else if (path.startsWith("$")) {
-                path = path.substring(1);
-            }
-
-            String[] segments = path.split("\\.");
-            JsonNode current = root;
-
-            for (String segment : segments) {
-                if (segment.isEmpty()) continue;
-
-                // Support functions: length(), size()
-                if (segment.equals("length()") || segment.equals("size()")) {
-                    if (current.isArray()) {
-                        return String.valueOf(current.size());
-                    } else if (current.isObject()) {
-                        return String.valueOf(current.size());
-                    } else if (current.isTextual()) {
-                        return String.valueOf(current.asText().length());
-                    }
-                    return "0";
-                }
-
-                // Check for array index notation, e.g. "items[0]"
-                if (segment.contains("[") && segment.endsWith("]")) {
-                    int bracketStart = segment.indexOf('[');
-                    String fieldName = segment.substring(0, bracketStart);
-                    String indexStr = segment.substring(bracketStart + 1, segment.length() - 1);
-
-                    if (!fieldName.isEmpty()) {
-                        current = current.get(fieldName);
-                        if (current == null) return "";
-                    }
-
-                    try {
-                        int index = Integer.parseInt(indexStr);
-                        if (current.isArray() && index >= 0 && index < current.size()) {
-                            current = current.get(index);
-                        } else {
-                            return "";
-                        }
-                    } catch (NumberFormatException e) {
-                        return "";
-                    }
-                } else {
-                    current = current.get(segment);
-                }
-
-                if (current == null || current.isMissingNode()) {
-                    return "";
-                }
-            }
-
-            // Return text value for string nodes, otherwise raw text
-            if (current.isTextual()) {
-                return current.asText();
-            } else if (current.isNumber()) {
-                return current.asText();
-            } else if (current.isBoolean()) {
-                return current.asText();
-            } else if (current.isNull()) {
-                return "";
-            } else {
-                return current.toString();
-            }
-        } catch (JsonProcessingException e) {
-            log.warn("Failed to parse JSON for path extraction '{}': {}", jsonPath, e.getMessage());
-            return "";
-        }
+        return JsonPathNavigator.extractAsText(objectMapper, responseBody, jsonPath);
     }
 
     // ── Response code matching ──────────────────────────────────────────

@@ -9,6 +9,7 @@ import com.orchestrator.model.WebhookRuleCondition;
 import com.orchestrator.model.enums.MockMatchRuleType;
 import com.orchestrator.repository.WebhookRepository;
 import com.orchestrator.repository.WebhookRequestLogRepository;
+import com.orchestrator.util.JsonPathNavigator;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -287,36 +288,16 @@ public class WebhookHandlerService {
 
     private boolean matchesJsonPath(String body, String jsonPath, String expectedValue) {
         try {
-            JsonNode root = objectMapper.readTree(body);
-            JsonNode node = navigateJsonPath(root, jsonPath);
+            JsonNode node = JsonPathNavigator.extractAsNode(objectMapper, body, jsonPath);
             if (node == null || node.isMissingNode()) return false;
             if (expectedValue == null) return true;
-            return node.asText().equals(expectedValue);
+            if (node.isValueNode()) {
+                return node.asText().equals(expectedValue);
+            }
+            return node.toString().equals(expectedValue);
         } catch (Exception e) {
             return false;
         }
-    }
-
-    private JsonNode navigateJsonPath(JsonNode root, String path) {
-        String normalized = path.startsWith("$.") ? path.substring(2) : path;
-        JsonNode current = root;
-        for (String segment : normalized.split("\\.")) {
-            if (current == null || current.isMissingNode()) return null;
-            if (segment.contains("[")) {
-                int bracketIdx = segment.indexOf('[');
-                String fieldName = segment.substring(0, bracketIdx);
-                int arrIdx = Integer.parseInt(segment.substring(bracketIdx + 1, segment.indexOf(']')));
-                current = current.get(fieldName);
-                if (current != null && current.isArray()) {
-                    current = current.get(arrIdx);
-                } else {
-                    return null;
-                }
-            } else {
-                current = current.get(segment);
-            }
-        }
-        return current;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
