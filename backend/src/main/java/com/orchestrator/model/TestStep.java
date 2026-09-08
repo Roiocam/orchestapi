@@ -70,6 +70,10 @@ public class TestStep {
     @Builder.Default
     private String queryParams = "[]";
 
+    @Column(name = "cursor_pagination", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private CursorPaginationConfig cursorPagination;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean cacheable = false;

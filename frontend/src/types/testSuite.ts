@@ -76,6 +76,14 @@ export interface StepExtractVariableDto {
   source: ExtractionSourceType
 }
 
+/** Server-owned cursor paging; preserved by editors, duplication and JSON export. */
+export interface CursorPaginationConfig {
+  cursorParam: string
+  nextCursorPath: string
+  itemsPath: string
+  maxPages: number
+}
+
 export interface TestStep {
   id: string
   suiteId: string
@@ -92,6 +100,7 @@ export interface TestStep {
   dependencyOnly: boolean
   disabledDefaultHeaders: string[]
   oauthMode: OAuthModeType
+  cursorPagination?: CursorPaginationConfig | null
   groupName: string
   sortOrder: number
   dependencies: StepDependencyDto[]
@@ -117,6 +126,7 @@ export interface TestStepRequest {
   dependencyOnly: boolean
   disabledDefaultHeaders: string[]
   oauthMode: OAuthModeType
+  cursorPagination?: CursorPaginationConfig | null
   groupName: string
   dependencies: StepDependencyDto[]
   responseHandlers: StepResponseHandlerDto[]

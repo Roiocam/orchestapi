@@ -1331,6 +1331,13 @@ public class ExecutionService {
         StepExecutionResult result = executeWithRetry(step, env, url, httpHeaders, body, springMethod,
                 resultCache, allExtractedVars, stepMap, stepStart);
 
+        // Pagination may finish on a later cursor; capture/extract the request actually sent.
+        if (step.getCursorPagination() != null && result.getRequestUrl() != null) {
+            url = result.getRequestUrl();
+            String cursorParam = step.getCursorPagination().cursorParam();
+            resolvedQueryParams.put(cursorParam, CursorPaginationState.cursorValue(url, cursorParam));
+        }
+
         // 10. Extract variables from both response AND request context (all resolved values)
         Map<String, String> extracted = extractVariables(step,
                 result.getResponseBody(), result.getResponseHeaders() != null ? result.getResponseHeaders() : Collections.emptyMap(), result.getResponseCode(),
@@ -1367,6 +1374,10 @@ public class ExecutionService {
                                                    Map<String, String> allExtractedVars,
                                                    Map<UUID, TestStep> stepMap,
                                                    long stepStart) {
+        if (step.getCursorPagination() != null) {
+            return executeWithCursorPagination(step, env, url, httpHeaders, body, springMethod,
+                    resultCache, allExtractedVars, stepMap, stepStart);
+        }
         int maxAttempts = 1; // default: one attempt, no retry
         int retryDelaySeconds = 0;
         StepResponseHandler retryHandler = null;
@@ -1452,6 +1463,64 @@ public class ExecutionService {
         }
 
         return lastResult;
+    }
+
+    /** Scans full pages immediately; only waiting at the tail consumes the polling retry budget. */
+    private StepExecutionResult executeWithCursorPagination(TestStep step, Environment env, String url,
+            HttpHeaders headers, Object body, org.springframework.http.HttpMethod method,
+            Map<UUID, StepExecutionResult> cache, Map<String, String> variables,
+            Map<UUID, TestStep> steps, long started) {
+        if (method != org.springframework.http.HttpMethod.GET || step.getResponseValidations() == null
+                || step.getResponseValidations().isEmpty() || step.getResponseHandlers() == null
+                || step.getResponseHandlers().stream().noneMatch(h -> h.getAction() == ResponseAction.RETRY)) {
+            return StepExecutionResult.builder().stepId(step.getId()).stepName(step.getName())
+                    .status("ERROR").errorMessage("cursorPagination requires GET, validations and RETRY")
+                    .durationMs(System.currentTimeMillis() - started).build();
+        }
+        CursorPaginationState paging = new CursorPaginationState(step.getCursorPagination(), objectMapper, url);
+        int idleRetries = 0;
+        int calls = 0;
+        while (true) {
+            StepExecutionResult result = executeHttpCall(step, env, paging.url(), headers, body, method,
+                    cache, variables, steps, started, calls++ > 0);
+            result.setRequestUrl(paging.url());
+            StepResponseHandler handler = step.getResponseHandlers().stream()
+                    .sorted(Comparator.comparingInt(StepResponseHandler::getPriority))
+                    .filter(h -> matchesCode(h.getMatchCode(), result.getResponseCode()))
+                    .findFirst().orElse(null);
+            if (handler == null || handler.getAction() != ResponseAction.RETRY) return result;
+
+            // Errors use normal handlers; never mistake an error envelope for a page.
+            if (result.getResponseCode() >= 200 && result.getResponseCode() < 300) {
+                try {
+                    result.setResponseBody(paging.accept(result.getResponseBody()));
+                    List<ResponseValidationResultDto> validations = responseValidationService.runValidations(
+                            step.getResponseValidations(), result.getResponseBody(), result.getResponseHeaders(),
+                            env, variables, this);
+                    result.setResponseValidationResults(validations);
+                    if (validations.stream().allMatch(ResponseValidationResultDto::isPassed)) {
+                        result.setStatus(calls > 1 ? "RETRIED" : "SUCCESS");
+                        result.setErrorMessage(null);
+                        return result;
+                    }
+                    if (paging.advance()) continue;
+                } catch (IllegalArgumentException exception) {
+                    result.setStatus("ERROR");
+                    result.setErrorMessage(exception.getMessage());
+                    return result;
+                }
+            }
+            if (idleRetries >= handler.getRetryCount()) return result;
+            idleRetries++;
+            try {
+                Thread.sleep(handler.getRetryDelaySeconds() * 1000L);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                result.setStatus("ERROR");
+                result.setErrorMessage("Cursor pagination interrupted");
+                return result;
+            }
+        }
     }
 
     private StepExecutionResult executeHttpCall(TestStep step,

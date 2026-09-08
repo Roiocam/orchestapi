@@ -61,6 +61,8 @@ public class TestSuiteImportRequest {
         @JsonSetter(nulls = Nulls.AS_EMPTY)
         private List<FormDataFieldDto> formDataFields = new ArrayList<>();
 
+        private com.orchestrator.model.CursorPaginationConfig cursorPagination;
+
         private boolean cacheable;
         private int cacheTtlSeconds;
         private boolean dependencyOnly;

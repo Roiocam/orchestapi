@@ -213,4 +213,122 @@ class ExecutionServiceRetryValidationTest {
         verify(restTemplate, times(4))
                 .exchange(any(URI.class), any(), any(HttpEntity.class), eq(String.class));
     }
+    /** Exercises actual executor validation and requests; only the remote HTTP boundary is stubbed. */
+    @Test
+    void followsFullPagesAndCombinesEvidenceAcrossPages() throws Exception {
+        enablePagination(100);
+        step.getResponseValidations().clear();
+        addBodyContains("first-page-evidence", 0);
+        addBodyContains("Skill", 1);
+        java.util.List<String> urls = new java.util.ArrayList<>();
+        when(restTemplate.exchange(any(URI.class), any(), any(HttpEntity.class), eq(String.class)))
+                .thenAnswer(call -> {
+                    String url = call.getArgument(0).toString();
+                    urls.add(url);
+                    if (url.endsWith("cursor=0&limit=200")) return ResponseEntity.ok(page("200", "first-page-evidence"));
+                    if (url.endsWith("cursor=200&limit=200")) return ResponseEntity.ok(page("400", "thinking"));
+                    if (url.endsWith("cursor=400&limit=200")) return ResponseEntity.ok(page(null, "Skill"));
+                    throw new AssertionError("Unexpected URL " + url);
+                });
+
+        StepExecutionResult result = executionService.runStep(suiteId, stepId, null).getSteps().get(0);
+
+        assertThat(result.getStatus()).isIn("SUCCESS", "RETRIED");
+        assertThat(urls).containsExactly(
+                "https://api.example.test/events?cursor=0&limit=200",
+                "https://api.example.test/events?cursor=200&limit=200",
+                "https://api.example.test/events?cursor=400&limit=200");
+        assertThat(result.getRequestUrl()).endsWith("cursor=400&limit=200");
+        assertThat(result.getRequestQueryParams()).containsEntry("cursor", "400");
+        assertThat(new ObjectMapper().readTree(result.getResponseBody()).at("/data/items")).hasSize(3);
+        assertThat(result.getResponseValidationResults()).allMatch(v -> v.isPassed());
+    }
+
+    @Test
+    void pollsPartialTailWithoutDuplicatingEarlierTailItems() throws Exception {
+        enablePagination(100);
+        step.getResponseValidations().clear();
+        addBodyContains("Skill", 0);
+        when(restTemplate.exchange(any(URI.class), any(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok(page("200", "first")))
+                .thenReturn(ResponseEntity.ok(page(null, "waiting")))
+                .thenReturn(ResponseEntity.ok("{\"data\":{\"items\":[\"waiting\",\"Skill\"],\"nextCursor\":null}}"));
+
+        StepExecutionResult result = executionService.runStep(suiteId, stepId, null).getSteps().get(0);
+
+        assertThat(result.getStatus()).isEqualTo("RETRIED");
+        assertThat(new ObjectMapper().readTree(result.getResponseBody()).at("/data/items")).hasSize(3);
+        verify(restTemplate, times(2)).exchange(eq(URI.create("https://api.example.test/events?cursor=200&limit=200")),
+                any(), any(HttpEntity.class), eq(String.class));
+    }
+
+    @Test
+    void stopsOnRepeatedCursorInsteadOfSpendingRetriesOnSamePage() throws Exception {
+        enablePagination(100);
+        step.getResponseValidations().clear();
+        addBodyContains("Skill", 0);
+        when(restTemplate.exchange(any(URI.class), any(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok(page("0", "waiting")));
+        StepExecutionResult result = executionService.runStep(suiteId, stepId, null).getSteps().get(0);
+        assertThat(result.getStatus()).isEqualTo("ERROR");
+        assertThat(result.getErrorMessage()).containsIgnoringCase("cursor");
+        verify(restTemplate, times(1)).exchange(any(URI.class), any(), any(HttpEntity.class), eq(String.class));
+    }
+
+    @Test
+    void fullPagesDoNotConsumeIdleRetryBudget() throws Exception {
+        enablePagination(100);
+        step.getResponseHandlers().iterator().next().setRetryCount(0);
+        step.getResponseValidations().clear();
+        addBodyContains("Skill", 0);
+        when(restTemplate.exchange(any(URI.class), any(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok(page("200", "thinking")))
+                .thenReturn(ResponseEntity.ok(page("400", "thinking")))
+                .thenReturn(ResponseEntity.ok(page(null, "Skill")));
+        StepExecutionResult result = executionService.runStep(suiteId, stepId, null).getSteps().get(0);
+        assertThat(result.getStatus()).isEqualTo("RETRIED");
+        assertThat(result.getRequestUrl()).endsWith("cursor=400&limit=200");
+    }
+
+    @Test
+    void transientErrorsRetryCurrentPageWithoutLosingPreviousEvidence() throws Exception {
+        enablePagination(100);
+        step.getResponseHandlers().add(StepResponseHandler.builder().matchCode("503").action(ResponseAction.RETRY)
+                .retryCount(2).retryDelaySeconds(0).priority(1).build());
+        step.getResponseValidations().clear();
+        addBodyContains("first", 0);
+        addBodyContains("Skill", 1);
+        when(restTemplate.exchange(any(URI.class), any(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok(page("200", "first")))
+                .thenReturn(ResponseEntity.status(503).body("unavailable"))
+                .thenReturn(ResponseEntity.ok(page(null, "Skill")));
+        StepExecutionResult result = executionService.runStep(suiteId, stepId, null).getSteps().get(0);
+        assertThat(result.getStatus()).isEqualTo("RETRIED");
+        assertThat(result.getResponseValidationResults()).allMatch(v -> v.isPassed());
+        verify(restTemplate, times(2)).exchange(eq(URI.create("https://api.example.test/events?cursor=200&limit=200")),
+                any(), any(HttpEntity.class), eq(String.class));
+    }
+
+    private void enablePagination(int maxPages) throws Exception {
+        step.setUrl("https://api.example.test/events");
+        step.setQueryParams("[{\"key\":\"cursor\",\"value\":\"0\"},{\"key\":\"limit\",\"value\":\"200\"}]");
+        // Deserialize the public config shape, including on the pre-fix model for the RED run.
+        new ObjectMapper().configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                .readerForUpdating(step).readValue("{\"cursorPagination\":{\"cursorParam\":\"cursor\","
+                        + "\"nextCursorPath\":\"/data/nextCursor\",\"itemsPath\":\"/data/items\",\"maxPages\":" + maxPages + "}}");
+    }
+
+    private void addBodyContains(String expected, int order) {
+        step.getResponseValidations().add(StepResponseValidation.builder()
+                .id(UUID.randomUUID()).step(step).validationType(ResponseValidationType.BODY_FIELD)
+                .jsonPath("$").operator(AssertionOperator.CONTAINS).expectedValue(expected).sortOrder(order).build());
+    }
+
+    private String page(String next, String item) throws Exception {
+        var data = new ObjectMapper().createObjectNode();
+        data.putArray("items").add(item);
+        if (next == null) data.putNull("nextCursor"); else data.put("nextCursor", next);
+        return new ObjectMapper().createObjectNode().set("data", data).toString();
+    }
+
 }
