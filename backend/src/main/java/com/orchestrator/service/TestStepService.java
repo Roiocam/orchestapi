@@ -69,6 +69,8 @@ public class TestStepService {
                 .max()
                 .orElse(-1);
 
+        validatePagination(request, request.getCursorPagination());
+
         TestStep step = TestStep.builder()
                 .suite(suite)
                 .name(request.getName())
@@ -76,6 +78,7 @@ public class TestStepService {
                 .url(request.getUrl())
                 .headers(toJson(request.getHeaders()))
                 .queryParams(toJson(request.getQueryParams()))
+                .cursorPagination(request.getCursorPagination())
                 .bodyType(BodyType.valueOf(request.getBodyType()))
                 .body(request.getBody() != null ? request.getBody() : "")
                 .formDataFields(toJson(request.getFormDataFields()))
@@ -126,6 +129,11 @@ public class TestStepService {
         step.setDisabledDefaultHeaders(toJson(request.getDisabledDefaultHeaders()));
         step.setOauthMode(request.getOauthMode() != null ? request.getOauthMode() : OAuthMode.INHERIT);
         step.setGroupName(request.getGroupName());
+
+        CursorPaginationConfig pagination = request.isCursorPaginationSpecified() || request.getCursorPagination() != null
+                ? request.getCursorPagination() : step.getCursorPagination();
+        validatePagination(request, pagination);
+        step.setCursorPagination(pagination);
 
         // Validate dependencies
         validateDependencies(suiteId, stepId, request.getDependencies());
@@ -193,6 +201,16 @@ public class TestStepService {
         return stepRepository.findBySuiteIdWithDetails(suiteId).stream()
                 .map(TestStepResponse::from)
                 .toList();
+    }
+
+    /** Paging is opt-in and only applies to safe, validated GET polling steps. */
+    private void validatePagination(TestStepRequest request, CursorPaginationConfig config) {
+        if (config == null) return;
+        if (request.getMethod() != HttpMethod.GET || request.getResponseValidations() == null
+                || request.getResponseValidations().isEmpty() || request.getResponseHandlers() == null
+                || request.getResponseHandlers().stream().noneMatch(h -> h.getAction() == ResponseAction.RETRY)) {
+            throw new IllegalArgumentException("cursorPagination requires GET, response validations and a RETRY handler");
+        }
     }
 
     private void validateDependencies(UUID suiteId, UUID stepId, List<StepDependencyDto> deps) {

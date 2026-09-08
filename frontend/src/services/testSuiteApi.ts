@@ -94,6 +94,7 @@ export async function exportSuite(suiteId: string) {
     dependencyOnly: s.dependencyOnly,
     disabledDefaultHeaders: s.disabledDefaultHeaders,
     oauthMode: s.oauthMode ?? 'INHERIT',
+    cursorPagination: s.cursorPagination ?? null,
     dependencies: s.dependencies.map((d) => ({
       dependsOnStepName: idToName.get(d.dependsOnStepId) || d.dependsOnStepId,
       useCache: d.useCache,

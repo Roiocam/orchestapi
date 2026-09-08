@@ -546,6 +546,7 @@ export default function StepEditor({ step, suiteId, allSteps, envVarNames, envHe
       dependencyOnly,
       disabledDefaultHeaders: Array.from(disabledDefaultHeaders),
       oauthMode,
+      cursorPagination: step?.cursorPagination ?? null,
       groupName: groupName.trim() || '',
       dependencies: dependencies.map(({ _clientId: _, ...rest }) => rest),
       responseHandlers: responseHandlers.map(({ _clientId: _, ...rest }) => rest),

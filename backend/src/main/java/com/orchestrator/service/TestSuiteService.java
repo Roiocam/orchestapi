@@ -229,6 +229,7 @@ public class TestSuiteService {
                 ? importStep.getOauthMode()
                 : com.orchestrator.model.enums.OAuthMode.INHERIT);
         req.setGroupName(importStep.getGroupName());
+        req.setCursorPagination(importStep.getCursorPagination());
         req.setExtractVariables(importStep.getExtractVariables() != null ? importStep.getExtractVariables() : new ArrayList<>());
         req.setVerifications(importStep.getVerifications() != null ? importStep.getVerifications() : new ArrayList<>());
         req.setResponseValidations(importStep.getResponseValidations() != null ? importStep.getResponseValidations() : new ArrayList<>());
@@ -266,7 +267,9 @@ public class TestSuiteService {
                     }
                     req.setResponseHandlers(handlers);
                 } else {
+                    // The second import pass installs handlers after their target step IDs exist.
                     req.setResponseHandlers(new ArrayList<>());
+                    req.setCursorPagination(null);
                 }
             } else {
                 req.setResponseHandlers(new ArrayList<>());

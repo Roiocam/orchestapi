@@ -28,6 +28,7 @@ public class TestStepResponse {
     private String url;
     private List<KeyValuePair> headers;
     private List<KeyValuePair> queryParams;
+    private CursorPaginationConfig cursorPagination;
     private String bodyType;
     private String body;
     private List<FormDataFieldDto> formDataFields;
@@ -55,6 +56,7 @@ public class TestStepResponse {
                 .url(step.getUrl())
                 .headers(parseJson(step.getHeaders()))
                 .queryParams(parseJson(step.getQueryParams()))
+                .cursorPagination(step.getCursorPagination())
                 .bodyType(step.getBodyType().name())
                 .body(step.getBody())
                 .formDataFields(parseFormDataFields(step.getFormDataFields()))

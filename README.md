@@ -1179,3 +1179,11 @@ Client Secret 不要放入 Deployment、ConfigMap、导出文件、Git 或日志
 ## License
 
 [MIT](LICENSE) — see [NOTICE](NOTICE) for third-party licenses.
+
+## Cursor-paginated polling
+
+Polling GET steps can follow server-provided cursors and validate accumulated pages instead of
+repeatedly reading the first page. Enable the optional `cursorPagination` field through the step
+API or JSON import; existing editor save, duplicate and export operations preserve it.
+See [the configuration and execution contract](docs/cursor-pagination-design.md) for an example,
+bounds, migration requirements and the PostgreSQL regression command.

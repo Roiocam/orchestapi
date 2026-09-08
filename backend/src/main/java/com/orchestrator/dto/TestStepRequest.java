@@ -1,6 +1,8 @@
 package com.orchestrator.dto;
 
 import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.orchestrator.model.CursorPaginationConfig;
 import com.fasterxml.jackson.annotation.Nulls;
 import com.orchestrator.model.HttpMethod;
 import com.orchestrator.model.enums.OAuthMode;
@@ -65,6 +67,19 @@ public class TestStepRequest {
     @JsonSetter(nulls = Nulls.AS_EMPTY)
     @Builder.Default
     private List<ResponseValidationDto> responseValidations = new ArrayList<>();
+
+    private CursorPaginationConfig cursorPagination;
+
+    @JsonIgnore
+    @Setter(AccessLevel.NONE)
+    private boolean cursorPaginationSpecified;
+
+    /** Distinguishes older clients omitting the field from an explicit request to disable paging. */
+    @JsonSetter("cursorPagination")
+    public void setCursorPagination(CursorPaginationConfig config) {
+        cursorPagination = config;
+        cursorPaginationSpecified = true;
+    }
 
     @Builder.Default
     private String bodyType = "NONE";
