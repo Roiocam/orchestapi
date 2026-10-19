@@ -865,6 +865,7 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
   const navigate = useNavigate()
   const [webhook, setWebhook] = useState<Webhook | null>(null)
   const [webhookUrl, setWebhookUrl] = useState('')
+  const [forwardTarget, setForwardTarget] = useState('http://localhost:3000')
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState(false)
   const [sseConnected, setSseConnected] = useState(false)
@@ -1004,6 +1005,16 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
     message.success(t('pages.webhooks.urlCopied'))
   }
 
+  const forwardCommand = webhookUrl
+    ? `node tools/webhook-forward.mjs --url ${webhookUrl} --target ${forwardTarget.trim() || 'http://localhost:3000'}`
+    : ''
+
+  const copyForwardCommand = () => {
+    if (!forwardCommand) return
+    navigator.clipboard.writeText(forwardCommand)
+    message.success(t('pages.webhooks.forwardCommandCopied'))
+  }
+
   const reqColumns = [
     {
       title: t('pages.webhooks.columnMethod'),
@@ -1075,6 +1086,36 @@ function WebhookDetailView({ webhookId }: { webhookId: string }) {
           </Space>
         </Space>
       </div>
+
+      {/* Forward to localhost */}
+      {webhookUrl && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          border: '1px solid #f0f0f0', borderRadius: 4, padding: '6px 10px',
+          marginBottom: 12, background: '#fafafa',
+        }}>
+          <Tooltip title={t('pages.webhooks.forwardLocallyTooltip')}>
+            <Text strong style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+              {t('pages.webhooks.forwardLocally')}
+            </Text>
+          </Tooltip>
+          <Input
+            size="small"
+            value={forwardTarget}
+            onChange={(e) => setForwardTarget(e.target.value)}
+            placeholder={t('pages.webhooks.forwardTargetPlaceholder')}
+            style={{ width: 220, fontFamily: 'monospace', fontSize: 11 }}
+          />
+          <Text
+            code
+            style={{ fontSize: 11, flex: 1, minWidth: 200, margin: 0 }}
+            ellipsis={{ tooltip: forwardCommand }}
+          >
+            {forwardCommand}
+          </Text>
+          <Button size="small" type="text" icon={<CopyOutlined />} onClick={copyForwardCommand} />
+        </div>
+      )}
 
       {/* Response Config (collapsible) */}
       <div style={{

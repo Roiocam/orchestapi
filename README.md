@@ -775,6 +775,28 @@ The detail page shows a two-panel layout:
 
 The detail page connects via SSE and shows new requests instantly with a green "Live" indicator. Multiple browser tabs can monitor the same webhook simultaneously.
 
+### Forward to Localhost (smee-style)
+
+Replay inbound webhook traffic to a process running on your machine — same idea as [smee.io](https://smee.io/). OrchestAPI still answers the caller with the configured response; the local forward is fire-and-forget for debugging.
+
+Requires **Node.js 18+**. From the repo root:
+
+```bash
+# Option A: pass the public webhook URL (SSE URL is derived)
+node tools/webhook-forward.mjs \
+  --url http://your-host/webhook/<webhookId> \
+  --target http://localhost:3000
+
+# Option B: pass the SSE stream URL directly
+node tools/webhook-forward.mjs \
+  --source http://your-host/api/webhooks/<webhookId>/requests/stream \
+  --target http://localhost:3000/hooks
+```
+
+Incoming path and query string are appended to `--target` (trailing slash stripped). Example: event path `/payments/cb` + target `http://localhost:3000` → `http://localhost:3000/payments/cb`.
+
+The webhook detail page also shows a copyable forward command.
+
 ### Limits
 
 | Limit | Value |
